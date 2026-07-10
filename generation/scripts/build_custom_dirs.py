@@ -1,7 +1,7 @@
 """
 Build QMOF-restricted ``bb-dir`` and ``topo-dir`` for PORMAKE.
 
-Inputs (from ``scripts/analyze_qmof.py``):
+Inputs (from ``scripts/analyze_reference_db.py``):
 - ``qmof_analysis/selected_topologies.txt``
 - ``qmof_analysis/selected_metals.txt``
 - ``qmof_analysis/selected_linkers.txt``
@@ -16,7 +16,7 @@ Outputs:
   skipped, or failed.
 
 Run order:
-    python scripts/analyze_qmof.py
+    python scripts/analyze_reference_db.py
     python scripts/build_custom_dirs.py           # all steps
     python scripts/build_custom_dirs.py --no-augment   # skip RDKit linker gen
 """
@@ -81,7 +81,7 @@ def _pormake_default_dirs() -> tuple[Path, Path]:
 def _read_list(path: Path) -> list[str]:
     if not path.exists():
         raise FileNotFoundError(
-            f"{path} not found -- run scripts/analyze_qmof.py first"
+            f"{path} not found -- run scripts/analyze_reference_db.py first"
         )
     return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 

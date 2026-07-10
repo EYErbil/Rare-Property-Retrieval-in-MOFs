@@ -10,7 +10,7 @@ writes define the generation chemistry consumed by
 Use your OWN dataset by pointing ``--csv`` at any CSV and mapping its column
 names with ``--topology-col`` / ``--nodes-col`` / ``--linkers-col`` (and
 optionally ``--pld-col`` / ``--lcd-col``). The defaults are QMOF's MOFid
-columns, so a plain ``python scripts/analyze_qmof.py`` reproduces the paper.
+columns, so a plain ``python scripts/analyze_reference_db.py`` reproduces the paper.
 Expected content per row:
 
 - topology column: one or more RCSR-style net codes (comma-separated)
