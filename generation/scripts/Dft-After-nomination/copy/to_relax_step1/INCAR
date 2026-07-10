@@ -1,0 +1,38 @@
+INCAR created by Atomic Simulation Environment
+ENCUT = 520.000000
+SIGMA = 0.010000
+EDIFF = 1.00e-06
+EDIFFG = -2.00e-02
+SYMPREC = 1.00e-08
+ALGO = All
+GGA = PE
+PREC = Accurate
+ISMEAR = 0
+ISYM = 0
+LORBIT = 11
+NELM = 150
+
+# Relaxation
+NSW = 250
+IBRION = 2
+ISIF = 2
+POTIM = 0.300000
+
+# Spin
+NUPDOWN = -1
+ISPIN = 2
+LORBIT=11
+
+# PBE-D3(BJ)
+IVDW = 12
+
+# Parallelization
+NCORE = 4
+
+# Output / grids
+ADDGRID = .FALSE.
+LAECHG = .TRUE.
+LASPH = .FALSE.
+LCHARG = .TRUE.
+LWAVE = .TRUE.
+LREAL = .FALSE.

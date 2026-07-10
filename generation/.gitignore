@@ -1,0 +1,37 @@
+# Python environments & caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# SLURM / run logs (may contain absolute cluster paths)
+logs/
+**/logs/
+*.log
+*.out
+*.err
+
+# Cached descriptors / embeddings written by the analysis runs (large, regenerated)
+soap_analysis/generated_vs_qmof/*.npz
+soap_analysis/*.npz
+**/*soap_descriptors*.npz
+**/umap_*cache*.npz
+
+# Generated comparison reports (contain absolute run paths; regenerated each run)
+soap_analysis/generated_vs_qmof/*.json
+**/*comparison_summary.json
+**/*comparison_row_manifest.npz
+
+# Generated structures & figure outputs
+generated_cifs/
+*_figures/
+paper_figures/
+
+# Large redundant archives (the unpacked folder is tracked instead)
+bulk_pormake_generation.zip
+
+# Local results staging & runtime outputs (never committed; distributed via Data availability)
+RESULTS/
+paper_results/
+novelty_results/
+candidate_cifs/

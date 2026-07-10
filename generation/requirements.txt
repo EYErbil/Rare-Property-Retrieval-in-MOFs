@@ -1,0 +1,37 @@
+# ============================================================================
+# Core generation (PORMAKE) + QMOF analysis
+# ============================================================================
+pandas>=1.5
+numpy>=1.23
+tqdm>=4.64
+pormake>=0.2
+rdkit>=2023.03.1
+
+# ============================================================================
+# Chemical-space comparison (SOAP descriptors + UMAP plots)
+# ============================================================================
+ase>=3.22
+dscribe>=2.1
+umap-learn>=0.5
+matplotlib>=3.7
+scikit-learn>=1.3
+
+# ============================================================================
+# PMTransformer embeddings + neural-network band-gap inference
+#   Install PyTorch (and PyTorch Geometric) for your CUDA version FIRST:
+#   https://pytorch.org/get-started  |  https://pytorch-geometric.readthedocs.io
+# ============================================================================
+torch>=1.12
+pytorch-lightning>=1.8
+moftransformer>=2.1          # then run: moftransformer install-griday
+
+# ============================================================================
+# DFT preparation & electronic-structure analysis (POSCAR/KPOINTS/DOS parsing)
+# ============================================================================
+pymatgen>=2023.1
+
+# ----------------------------------------------------------------------------
+# External tools NOT installable from PyPI (install separately):
+#   - Open Babel : SMILES/InChIKey for linker identification (conda-forge: openbabel)
+#   - VASP       : DFT engine (licensed) and its POTCAR pseudopotentials
+# ----------------------------------------------------------------------------

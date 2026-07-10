@@ -1,0 +1,10 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+python3 "$SCRIPT_DIR/vasp_magmom_manager.py" extract \
+  --root /path/to/DFT_WORK_ROOT \
+  --source-stage PBED3-PreRelax \
+  --target-stage PBED3-Relax \
+  --backup \
+  --write

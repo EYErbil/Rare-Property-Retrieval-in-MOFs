@@ -1,0 +1,49 @@
+# =============================================================================
+# screening module .gitignore
+# =============================================================================
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# --- Virtual environments ----------------------------------------------------
+venv/
+env/
+.env/
+
+# --- Data files (too large for Git) ------------------------------------------
+*.grid
+*.griddata16
+*.graphdata
+*.npz
+*.ckpt
+*.joblib
+
+# --- Generated outputs -------------------------------------------------------
+logs/
+slurm-*.out
+*.png
+*.pdf
+*.svg
+figures_output/
+
+# --- OS / IDE ----------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea
+*.swp
+*.swo
+*~
+
+# --- Directories that contain generated results ------------------------------
+results/
+checkpoints/
+
+# --- Local results staging (never committed; distributed via Data availability) ---
+RESULTS/
+paper_results/

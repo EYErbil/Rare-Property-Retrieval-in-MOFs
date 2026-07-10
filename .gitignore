@@ -1,0 +1,13 @@
+# OS / editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local staging folders (distributed via the paper's Data availability, never committed)
+RESULTS/
+GLOBUS/
+
+# Run logs
+logs/
+slurm-*.out
