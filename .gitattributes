@@ -1,0 +1,17 @@
+# Shell scripts are executed on Linux clusters (SLURM). A CRLF checkout makes
+# them fail with "bad interpreter: /bin/bash^M", so pin them to LF on every
+# platform regardless of the user's core.autocrlf setting.
+*.sh text eol=lf
+
+# Same reasoning for anything else read by a POSIX tool.
+*.slurm  text eol=lf
+Makefile text eol=lf
+
+# Binary assets: never touch them.
+*.png binary
+*.pdf binary
+*.npz binary
+*.zip binary
+*.cif -text
+*.cgd -text
+*.xyz -text
