@@ -55,12 +55,13 @@ Read sections **in order**. Replace every `REPO_ROOT` with the absolute path to 
 ### Data you must obtain yourself
 
 1. **`qmof.csv`** — QMOF database release table, read by `scripts/analyze_reference_db.py` (see its
-   docstring). **Already committed** at `REPO_ROOT/qmof.csv` — re-download from the
-   [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF) only if you want a newer release.
+   docstring). Download the release table from the
+   [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF) and place it at
+   `REPO_ROOT/qmof.csv`; it is not committed or included in Globus.
 
 2. **QMOF CIFs for SOAP** — A directory of `.cif` files for structures you treat as the QMOF reference set (subset or full). Used only when computing SOAP from CIFs (`--qmof-cif-dir`). Same basename conventions as your workflow expects.
 
-3. **Train/val/test split JSONs** — For split-colored SOAP/PMT figures and nomination alignment, directories containing:
+3. **Train/validation/test partition JSONs** — For split-colored SOAP/PMT figures and nomination alignment, directories containing:
 
    `train_bandgaps_regression.json`, `val_bandgaps_regression.json`, `test_bandgaps_regression.json`
 
@@ -72,7 +73,14 @@ Read sections **in order**. Replace every `REPO_ROOT` with the absolute path to 
 
 5. **Trained ML embedding classifiers** — Directory tree with one subfolder per method (`extra_trees/`, `random_forest/`, …), each containing `model.joblib` and/or `artifacts.joblib`. You pass this tree as **`--clf_dir`** to `scripts/re_inference/reinfer_ml.py` (see Step 10); its built-in default `--clf_dir` is only a placeholder, so supply your own path.
 
-6. **PMTransformer embedding `.npz` for nomination / ML scoring** — Must contain **`cif_ids`** and **`embeddings`** (768-dim CLS), e.g. `generated_pmt_embeddings.npz` (generated pool, from Step 7) or `pmt_embeddings_qmof_all.npz` (QMOF reference cache, via Globus). Produced by your unified extraction pipeline (see **Step 8**).
+6. **Representation `.npz` files** — PMTransformer embeddings (`cif_ids` + 768-d
+   `embeddings`) are used for ML scoring and representation comparisons. SOAP is the sole
+   structural-diversity matrix for the generated-pool nomination; the second-phase QMOF
+   acquisition ran the same procedure separately in PMTransformer-embedding and SOAP spaces, so
+   both matrices are diversity inputs there. The generated PMTransformer cache is released
+   on Globus as `embeddings/generated_pmtransformer_embeddings.npz` (13,802 rows, identifiers and
+   row order identical to the generated SOAP archive); it can alternatively be regenerated in
+   Step 7.
 
 7. **DFT runtime inputs** — For the post-nomination VASP workflow you must supply any licensed or site-specific files yourself, especially **`POTCAR`** files and cluster job scripts/modules. This repo provides helper templates and preparation scripts, but it does **not** distribute POTCARs or run VASP.
 
@@ -154,14 +162,31 @@ python bulk_pormake_generation/make_candidates.py \
 > Candidate sampling is stochastic (not seeded) and the build stage (Step 3) discards
 > candidates that fail assembly or the cell-size filters, so 20,000 candidates reduced to the
 > paper's 13,802 successfully built, screenable structures. Exact counts will vary between
-> runs; the paper's exact candidate list and generated CIF database are archived via Globus
-> (Data availability).
+> runs. This random-generation route constructs a new pool; it does not claim to recreate the
+> exact paper pool. The paper-pool identities and descriptor-row order are recoverable from the
+> released generated SOAP archive as shown below. The full paper-pool CIF database is not
+> distributed.
 
 > The output flag is `-s` / `--save` (there is **no** `--output`). `--has-metal` defaults to `True`;
 > due to an argparse quirk (`type=bool`) passing `--has-metal False` does *not* disable the metal
 > requirement, so leave it at the default.
 
 **Output:** `data/candidates_qmof_13k_200atom.txt`
+
+#### Exact paper-pool identity manifest
+
+To materialize the exact 13,802 paper-pool IDs, preserving their order in the released SOAP
+descriptor matrix, run:
+
+```bash
+python scripts/materialize_generated_pool_manifest.py \
+  --descriptor-npz soap_analysis/generated_vs_qmof/generated_soap_descriptors.npz \
+  --output data/paper_generated_pool_manifest.txt
+```
+
+This mode requires no generated-pool CSV. It validates the expected count and uniqueness and prints
+a SHA-256 checksum. The manifest fixes the identity and row order of the paper pool; it does not
+reconstruct undistributed CIF coordinate files. Use the stochastic route above to build a new pool.
 
 ---
 
@@ -396,7 +421,8 @@ cd REPO_ROOT
 python scripts/re_inference/reinfer_ml.py \
   --embeddings_path REPO_ROOT/PmTransformer_analysis/results/generated_pmt_embeddings.npz \
   --clf_dir /path/to/embedding_classifiers/strategy_d_farthest_point \
-  --output_dir REPO_ROOT/re_infer/ml
+  --output_dir REPO_ROOT/re_infer/ml \
+  --methods smote_extra_trees
 ```
 
 **Alternative (directory-only embeddings discovery):**
@@ -412,7 +438,8 @@ python scripts/re_inference/reinfer_ml.py \
 **Outputs:**
 
 - `REPO_ROOT/re_infer/ml/<method>/test_predictions.csv`
-- `REPO_ROOT/re_infer/ml/<method>/final_results.json`
+- no validation-metric JSON is synthesized during re-inference; training-time
+  `final_results.json` files remain with the trained artifacts
 
 If `--output_dir` is omitted, files are written **in place** under each method folder in `--clf_dir`.
 
@@ -431,14 +458,19 @@ python scripts/re_inference/plot_inference_bandgap_distribution.py \
 
 ### Step 12 — Diversity-aware DFT nomination
 
-Script: **`REPO_ROOT/nominate_diverse_dft.py`** (repository root).
+Canonical entrypoint: **`REPO_ROOT/scripts/12_nominate_paper_candidates.sh`**; it calls
+`REPO_ROOT/nominate_diverse_dft.py` with every paper parameter explicitly pinned.
 
-> **Two copies exist by design.** Each repository carries its own copy so that each is
+> **Two copies exist by design.** Each module carries its own copy so that each is
 > self-contained: this copy was used for the **generated-MOF pool**, the screening module's
 > [`discovery/nominate_diverse_dft.py`](../screening/discovery/nominate_diverse_dft.py)
-> for the **unlabelled QMOF pool**. Both expose the same CLI (`--embedding_key` /
-> `--embedding_label` select the diversity space) and the same strategy set — cluster quota,
+> for the **unlabelled QMOF pool**. Both expose the same CLI and strategy set — cluster quota,
 > MMR, uncertainty quota, long-tail exploration — differing only in pool-specific reporting.
+> For the paper, `--embeddings_path` always points to SOAP descriptors and
+> `--embedding_key soap_descriptors`: for the generated pool, SOAP is the sole structural-diversity
+> coordinate in both the main and exploration tiers. (The second-phase QMOF acquisition in the
+> screening module additionally ran this procedure in PMTransformer-embedding space.) RRF and
+> NN–ML disagreement are priority scores, not geometry.
 
 Run from **`REPO_ROOT`** so imports resolve predictably:
 
@@ -446,59 +478,46 @@ Run from **`REPO_ROOT`** so imports resolve predictably:
 cd REPO_ROOT
 ```
 
-You normally run **twice**: once with PMTransformer embeddings as diversity space, once with SOAP descriptors — **same** `--prediction_csvs`, different `--embeddings_path` / `--embedding_key`.
+Run the paper nomination **once, in SOAP space**. PMTransformer embeddings are not a nomination
+diversity alternative in the paper workflow.
 
-#### Run A — diversity in PMTransformer space
-
-```bash
-python nominate_diverse_dft.py \
-  --embeddings_path REPO_ROOT/PmTransformer_analysis/results/generated_pmt_embeddings.npz \
-  --embedding_key embeddings \
-  --embedding_label PMTransformer \
-  --prediction_csvs \
-    exp364=REPO_ROOT/re_infer/nn/exp364/inference_predictions.csv \
-    smote_extra_trees=REPO_ROOT/re_infer/ml/extra_trees/test_predictions.csv \
-  --nn_models exp364 \
-  --ml_models smote_extra_trees \
-  --output_dir /path/to/nomination_pmt_space \
-  --pool_size 500 \
-  --n_clusters 20 \
-  --max_per_cluster 1 \
-  --mmr_lambdas 0.2 0.3 0.4 \
-  --budget 25 \
-  --exploration_budget 5 \
-  --exploration_pool_hi 2000 \
-  --rrf_k 60 \
-  --seed 42
-```
-
-Optional: `--soap_embeddings_path /path/to/soap_descriptors_sparse_or_dense.npz` adds SOAP-only **report** statistics; it does **not** switch diversity space unless you use Run B.
-
-#### Run B — diversity in SOAP space
+#### Canonical paper run — SOAP diversity for both tiers
 
 ```bash
+bash scripts/12_nominate_paper_candidates.sh
+
+# Equivalent explicit invocation:
 python nominate_diverse_dft.py \
   --embeddings_path REPO_ROOT/soap_analysis/generated_vs_qmof/generated_soap_descriptors.npz \
   --embedding_key soap_descriptors \
   --embedding_label SOAP \
   --prediction_csvs \
     exp364=REPO_ROOT/re_infer/nn/exp364/inference_predictions.csv \
-    smote_extra_trees=REPO_ROOT/re_infer/ml/extra_trees/test_predictions.csv \
+    smote_extra_trees=REPO_ROOT/re_infer/ml/smote_extra_trees/test_predictions.csv \
   --nn_models exp364 \
   --ml_models smote_extra_trees \
-  --output_dir /path/to/nomination_soap_space \
+  --output_dir REPO_ROOT/paper_results/nomination-SOAP \
   --pool_size 500 \
+  --pca_components 50 \
   --n_clusters 20 \
+  --kmeans_n_init 10 \
   --max_per_cluster 1 \
   --mmr_lambdas 0.2 0.3 0.4 \
+  --alpha 0.50 \
+  --beta 0.30 \
+  --gamma 0.20 \
   --budget 25 \
   --exploration_budget 5 \
+  --exploration_pool_lo 500 \
   --exploration_pool_hi 2000 \
+  --exploration_disagreement_weight 0.60 \
+  --exploration_rank_std_weight 0.40 \
+  --exploration_mmr_lambda 0.40 \
   --rrf_k 60 \
   --seed 42
 ```
 
-**Outputs (each `--output_dir`):**
+**Outputs (`REPO_ROOT/paper_results/nomination-SOAP`):**
 
 - `FINAL_TOP25_diverse.txt`, `FINAL_TOP25_diverse.csv` (columns: `rank, cif_id, rrf_rank, strategies_nominating, rank_std, rank_range, nn_ml_disagreement, cluster`)
 - `COMBINED_top25.txt` and one file per strategy — `A_cluster_quota_top25.txt`, `B_mmr_lambda{λ}_top25.txt` (one per `--mmr_lambdas` value), `C_uncertainty_quota_top25.txt`, `D_longtail_exploration_top25.txt`
@@ -510,6 +529,9 @@ python nominate_diverse_dft.py \
 > weight strategy C's quality / diversity / disagreement terms; `--exploration_pool_lo` (defaults to
 > `--pool_size`) and `--exploration_pool_hi` bound the long-tail pool; `--old_nominees` and
 > `--umap_cache` enable the old-vs-new comparison plot and faster re-runs.
+> In every strategy, cluster membership, MMR distance, diversity weighting, and exploration-tier
+> spread come from the same SOAP matrix. The prediction CSVs supply RRF/disagreement priorities
+> only.
 
 **Next:** carry the nominated CIFs into the four-stage VASP cascade —
 [DFT_WORKFLOW.md](DFT_WORKFLOW.md) (Steps 13–26).
@@ -521,11 +543,9 @@ python nominate_diverse_dft.py \
 
 | File role | Typical filename | Matrix key for `--embedding_key` |
 |-----------|------------------|-----------------------------------|
-| PMTransformer / unified embeddings | `generated_pmt_embeddings.npz`, `pmt_embeddings_qmof_all.npz` | `embeddings` |
-| SOAP descriptors | `*_soap_descriptors.npz` from `compare_generated_vs_qmof.py` | `soap_descriptors` |
-| ML re-inference / nomination (same matrix as PMTransformer space) | Any `.npz` with `cif_ids` + `embeddings` | `embeddings` |
+| PMTransformer / unified embeddings (ML scoring and representation analysis, not paper nomination geometry) | `generated_pmt_embeddings.npz`, `pmt_embeddings_qmof_all.npz` | `embeddings` |
+| SOAP descriptors (sole paper nomination geometry) | `*_soap_descriptors.npz` from `compare_generated_vs_qmof.py` | `soap_descriptors` |
 
 Always verify keys:
 
 `python -c "import numpy as np; d=np.load('file.npz'); print(d.files)"`
-

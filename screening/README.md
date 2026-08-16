@@ -9,21 +9,22 @@ This is the **screening module** of the [rare-property-retrieval](../) repositor
 > | **`screening/`** *(this module)* | Trains the PMTransformer regressor + ExtraTrees classifier; screens & ranks **known** structures |
 > | [`generation/`](../generation/) | **Generates** new candidates with PORMAKE, screens them with the models trained here, and runs the **HSE06 DFT** validation |
 >
-> Accompanies the paper *Enrichment-driven discovery of low-band-gap metal–organic frameworks with
-> pretrained porous-material representations* (see [Citation](#citation)). Author: Ege Yiğit Erbil, Koç University.
+> Accompanies the paper *Enrichment-driven discovery of low-band-gap metal–organic frameworks* (see [Citation](#citation)). Code author: Ege Yiğit Erbil, Koç University.
 
 ## Results at a glance
 
-Evaluated retrospectively on a held-out QMOF partition and then deployed prospectively on unseen
+Evaluated retrospectively on a labeled QMOF test partition and then deployed prospectively on unseen
 structures, the fused ranking turns a sub-1% needle-in-a-haystack search into a tractable shortlist:
 
-- **~122× enrichment** over random screening at a 25-structure validation budget on the held-out test set.
+- **~122× enrichment** over random screening at a 25-structure validation budget on the test
+  partition. This partition was excluded from model fitting but used retrospectively to compare
+  models and fusion choices; it is not an untouched external benchmark.
 - **Rank rescue:** the regressor buries one true positive at rank 5,942 and the classifier buries a
   *different* one at rank 8,140, yet reciprocal-rank fusion keeps its worst positive at rank 1,793 —
   robust precisely where either model alone fails catastrophically.
-- **8 confirmed low-band-gap MOFs** (HSE06 $E_\mathrm{g} \le 1$ eV) across both deployments: **3** from
-  unlabelled QMOF (15% validated hit rate) and **5** newly generated frameworks (25% hit rate), the
-  latter novel against QMOF, CoRE MOF 2019, hMOF, and ToBaCCo.
+- Across both deployments, **48** structures were submitted to the DFT workflow, **41** yielded
+  reportable HSE06 results, and **9** low-band-gap MOFs were confirmed: **3** from the unlabelled
+  QMOF pool and **6** from the generated pool.
 
 ```mermaid
 flowchart LR
@@ -53,7 +54,14 @@ The pipeline extracts two complementary prediction signals from a single foundat
 
 These two approaches capture complementary signal: the trees operate on frozen general-purpose features while the fine-tuned model has task-adapted features. Their predictions are fused via RRF, and NN-ML disagreement provides an uncertainty signal.
 
-**Diversity-aware candidate nomination (Step 7):** Rather than selecting the top-K candidates by score alone, the nomination pipeline clusters the RRF shortlist in embedding space and applies multiple diversity-aware strategies (cluster-quota round-robin, Maximal Marginal Relevance (MMR), uncertainty-weighted selection, and long-tail exploration). When SOAP descriptors are used as the diversity space instead of PMTransformer embeddings, the resulting nominees achieve greater structural spread — SOAP measures purely geometric/chemical similarity independent of the learned representations used for scoring.
+**Diversity-aware candidate nomination (Step 7):** Rather than selecting the top-K candidates by
+score alone, the nomination pipeline applies cluster-quota round-robin and Maximal Marginal
+Relevance (MMR). Diversity is measured in a representation space that is **separate from the
+ranking**, and the same clustering-plus-MMR procedure is applied to the main RRF-prioritized
+candidates and to the disagreement-prioritized exploration tier. In the paper the generated-pool
+nomination ran once in SOAP space, whereas the second-phase QMOF acquisition ran the procedure
+separately in PMTransformer-embedding and SOAP spaces and combined the two shortlists. RRF and
+NN–ML disagreement affect candidate priority, but never define structural distance.
 
 ---
 
@@ -78,12 +86,12 @@ These two approaches capture complementary signal: the trees operate on frozen g
     v
   STEP 6   Discovery — deploy models on ~10K NEW unlabeled MOFs, RRF ranking
     v
-  STEP 7   Diversity-aware DFT nomination (cluster + MMR + SOAP verification)
+  STEP 7   Diversity-aware DFT nomination (SOAP cluster + SOAP MMR)
 ```
 
-> **Labeled vs. unlabeled sets.** Steps 1-5 work on the ~10,810 MOFs with known HSE06 band gaps (only 74 positives — a needle-in-a-haystack retrieval problem). Steps 6-7 work on a **completely separate** set of ~9,561 unlabelled QMOF MOFs that the models have never seen during training, validation, or testing. These are not the test split from Steps 1-5; they are new structures for which we want to discover low-band-gap candidates.
+> **Labeled vs. unlabeled sets.** Steps 1-5 work on the ~10,810 MOFs with known HSE06 band gaps (only 74 positives — a needle-in-a-haystack retrieval problem). Steps 6-7 work on a **completely separate** set of ~9,561 unlabelled QMOF MOFs that the models have never seen during training, validation, or testing. These are not the labeled test partition from Steps 1-5; they are new structures for which we want to discover low-band-gap candidates.
 
-> **NN vs. ML data flow.** The fine-tuned NN (Step 2) reads the raw preprocessed MOF files directly — MOFTransformer handles tokenisation internally. The ML classifiers (Step 3) train on the frozen 768-dim pretrained embeddings extracted in Step 1. Both paths use the same train/val/test split.
+> **NN vs. ML data flow.** The fine-tuned NN (Step 2) reads the raw preprocessed MOF files directly — MOFTransformer handles tokenisation internally. The ML classifiers (Step 3) train on the frozen 768-dim pretrained embeddings extracted in Step 1. Both paths use the same train/validation/test partitions.
 
 ---
 
@@ -100,7 +108,7 @@ DFT validation). To reproduce everything:
 3. **Step 1** — `01_extract_embeddings.sh`: pretrained embeddings + the Strategy D split.
 4. **Step 2** — `02_train_nn.sh`: fine-tune the three PMTransformer regressors.
 5. **Step 3** — `03_train_ml.sh`: the ExtraTrees / ML classifiers on frozen embeddings.
-6. **Steps 4–5** — `04_run_ensemble.sh`, `05_generate_report.sh`: RRF ensemble + report. This reproduces the held-out **enrichment / rank-rescue** numbers.
+6. **Steps 4–5** — `04_run_ensemble.sh`, `05_generate_report.sh`: RRF ensemble + report. This reproduces the retrospective test-partition **enrichment / rank-rescue** numbers.
 7. **Steps 6–7** — `06_run_discovery.sh`, `07_nominate_candidates.sh`: screen the unlabelled QMOF pool and nominate a diverse subset. DFT-validating these gives the **3 QMOF hits**.
 
 **Then switch to [`generation/`](../generation/) for the generated-structure arm and all DFT.**
@@ -116,15 +124,15 @@ to re-run the screening arm is committed (the generation + DFT arm lives in
 
 | Artifact | Location |
 |---|---|
-| Exact train/val/test membership lists (1,136 / 524 / 9,150; 60 / 5 / 9 positives) | [`data/splits/strategy_d_farthest_point/`](data/splits/strategy_d_farthest_point/) |
+| Exact train/validation/test partition membership lists (1,136 / 524 / 9,150; 60 / 5 / 9 positives) | [`data/splits/strategy_d_farthest_point/`](data/splits/strategy_d_farthest_point/) |
 | Pinned dependency freezes (fine-tuning + analysis environments) | [`../env/`](../env/) (repository root) |
 | SI input-representation ablation (classifier retrained on SOAP) | [`figures/representation_ablation.py`](figures/representation_ablation.py) |
 | Fine-tuning configs matching the paper's Methods exactly (seed 42/123/456) | [`experiments/`](experiments/) |
 
-All result artifacts — the ranked screening tables, curated hit tables, confirmed-hit
-structures, pretrained-embedding archives, model checkpoints, and the complete DFT inputs and
-outputs for every completed validation — are distributed separately (see the paper's Data
-availability statement).
+Derived CSVs, ranked tables, curated result tables, plots, trained checkpoints, and legacy
+nomination folders are not distributed. Globus contains only the SOAP and frozen pretrained
+PMTransformer embedding archives plus DFT calculation directories for 25 QMOF-pool and
+23 generated submissions; this GitHub code regenerates the derived outputs.
 
 ---
 
@@ -209,7 +217,7 @@ screening/
 ### Installation
 
 ```bash
-git clone https://github.com/EYErbil/rare-property-retrieval.git
+git clone https://github.com/EYErbil/Rare-Property-Retrieval-in-MOFs.git
 cd rare-property-retrieval/screening
 python -m venv venv && source venv/bin/activate
 
@@ -235,7 +243,7 @@ bit-for-bit.
 1. **Clone and environment** — Follow [Installation](#installation) (PyTorch / PyG order matters).
 2. **`scripts/config.sh`** — Set `BASE_DIR` to the cloned repo path and `VENV_PATH` to your venv `activate` script. Adjust `MODULE_LOADS` or set it to `""` if you do not use environment modules.
 3. **SLURM headers** — Each `scripts/*.sh` file has its own `#SBATCH` partition/account/QoS lines. Edit them to match your site (see [Configuration](#configuration)).
-4. **Data you must supply** — The repository includes the paper's exact train/val/test membership lists (`data/splits/strategy_d_farthest_point/*.json`) but **not** the MOF structure files, embeddings, or checkpoints. Build `data/` as described in [data/README.md](data/README.md) (labeled set for Steps 1–5, separate unlabeled set for Steps 6–7). Without these, jobs will fail at Step 1 or 6 with missing-path errors.
+4. **Data you must supply** — The repository includes the paper's exact train/validation/test partition membership lists (`data/splits/strategy_d_farthest_point/*.json`) but **not** the MOF structure files, embeddings, or checkpoints. Build `data/` as described in [data/README.md](data/README.md) (labeled set for Steps 1–5, separate unlabeled set for Steps 6–7). Without these, jobs will fail at Step 1 or 6 with missing-path errors.
 5. **Optional inputs** — `data/qmof.csv` (metal-center panels in F2/F3), SOAP cache for Step 7 SOAP run (run F4 first or set `SOAP_EMBEDDINGS` in `07_nominate_candidates.sh`).
 6. **`logs/`** — Pipeline scripts create `logs/` automatically; ensure the job working directory is the repo root (the provided scripts `cd` to `BASE_DIR`).
 
@@ -269,15 +277,29 @@ Place all preprocessed files under `data/raw/test/` (MOFTransformer expects a pa
 ### Step 1: Extract Embeddings and Create Splits
 
 ```bash
-sbatch scripts/01_extract_embeddings.sh    # GPU, ~2-4h
+# Default paper mode: restore/verify exact membership from the Globus archive.
+sbatch scripts/01_extract_embeddings.sh
+
+# Explicitly design a new, noncanonical split for another task.
+SPLIT_MODE=fresh FRESH_RUN_ID=my_new_target sbatch scripts/01_extract_embeddings.sh
 ```
 
-Runs a forward pass of the **pretrained** (non-fine-tuned) PMTransformer on every labeled MOF and saves the 768-dim CLS embeddings to `data/embeddings/embeddings_pretrained.npz`. These embeddings serve two purposes: (1) input features for the ML classifiers in Step 3, and (2) the basis for **Strategy D** farthest-point train/val/test splitting, which ensures every positive in val/test has a structurally similar positive in training. The NN in Step 2 does **not** use these embeddings — it reads the raw preprocessed MOF files directly.
+For the paper, restore the labeled Globus archive to
+`data/embeddings/embeddings_pretrained.npz`. The default `SPLIT_MODE=paper` calls
+`data_preparation/materialize_paper_split.py`, verifies the archive counts (1,136 / 524 / 9,150;
+60 / 5 / 9 positives), and creates only missing canonical JSONs. It verifies but never overwrites
+an existing canonical file. By default it then links every listed structure from `data/raw/` into
+the canonical train/validation/test directories; set `REPAIR_SPLIT_LINKS=0` only for a
+membership-only verification.
 
-> **To reproduce the paper, skip Step 1b's split generation** — the exact published split is
-> already committed at `data/splits/strategy_d_farthest_point/`. Run Step 1b only when
-> targeting a new dataset or property; the script automatically backs up any existing split
-> JSONs (timestamped `backup_*/` subfolder) before writing a fresh split.
+The archive was computed before any task-specific fitting with the frozen pretrained
+PMTransformer encoder. Cosine distances in this fixed local-and-global representation determined
+the paper partitions without label-trained leakage. The same embeddings later supply Step 3
+classifier features; SOAP, not PMTransformer distance, supplies the nomination geometry.
+
+`SPLIT_MODE=fresh` is the only mode that runs a new PMTransformer forward pass and
+`embedding_split.py`; it writes exclusively below
+`data/{embeddings,splits}/noncanonical/<FRESH_RUN_ID>/` and cannot replace the paper split.
 
 ### Step 2: Train Neural Network Regressors
 
@@ -285,7 +307,11 @@ Runs a forward pass of the **pretrained** (non-fine-tuned) PMTransformer on ever
 sbatch scripts/02_train_nn.sh              # GPU, ~24-69h
 ```
 
-Fine-tunes PMTransformer for band-gap regression with three random seeds (`exp364`, `exp370`, `exp371`). Each experiment is configured via `experiments/<name>/run.py` — edit hyperparameters there directly. Key settings: Huber loss, mean pooling, early stopping on validation Spearman rho.
+Fine-tunes PMTransformer for band-gap regression. The paper's production regressor is
+`exp364_fulltune`; `exp370_seed2` and `exp371_seed3` remain exploratory seed comparisons and do not
+enter the canonical two-model nomination. Each experiment is configured via
+`experiments/<name>/run.py`; key settings include Huber loss, mean pooling, and early stopping on
+validation Spearman rho.
 
 ### Step 3: Train ML Classifiers
 
@@ -301,7 +327,7 @@ Trains 15+ sklearn classifiers (Random Forest, SVM, Extra Trees, XGBoost, SMOTE 
 sbatch scripts/04_run_ensemble.sh          # CPU, ~1-2h
 ```
 
-Tests every 2/3/4-model combination across multiple fusion methods (RRF, rank averaging, top-K voting, score averaging, weighted RRF, and a logistic-regression stacking meta-learner), plus greedy forward selection and an exhaustive combination search. Reports the optimal combination maximising recall@50 on the labeled test set.
+Tests every 2/3/4-model combination across label-free fusion methods (RRF, rank averaging, top-K voting, score averaging, and uniform weighted RRF), plus greedy forward selection and an exhaustive combination search. Reports the combination maximising recall@50 in the retrospective labeled test-partition comparison; no meta-estimator is fitted on that partition.
 
 ### Step 5: Generate Report
 
@@ -317,7 +343,7 @@ Produces 15+ figures: recall heatmaps, complementarity analysis, confusion matri
 sbatch scripts/06_run_discovery.sh         # GPU, ~4-8h
 ```
 
-> **This uses a completely separate MOF set.** The ~10K unlabeled structures here were never part of the train/val/test split used in Steps 1-5.
+> **This uses a completely separate MOF set.** The ~10K unlabeled structures here were never part of the labeled train/validation/test partitions used in Steps 1-5.
 
 Deploys all trained models on unlabeled MOFs. The script: (a) extracts pretrained embeddings for the unlabeled set → `unlabeled_embeddings.npz`, (b) runs ML inference using saved sklearn models, (c) runs NN inference using each fine-tuned checkpoint, and (d) fuses predictions via RRF to produce a consensus ranking. Before running, prepare the data:
 
@@ -336,17 +362,25 @@ sbatch scripts/07_nominate_candidates.sh   # CPU, ~1-2h
 This is the final step: selecting 25 structures for DFT band-gap calculation. Rather than taking the top 25 by score, the pipeline ensures structural diversity:
 
 1. **RRF shortlist** — Build a pool of the top 500 candidates from 1 NN + 1 ML model fused by RRF
-2. **Cluster** — PCA-50 + KMeans groups the pool into 20 structural clusters
+2. **SOAP geometry** — PCA-50 + KMeans groups the pool into 20 structural clusters using SOAP only
 3. **Diverse selection** via four strategies:
    - **A. Cluster-quota round-robin** — best candidate per cluster, cycling until budget is filled
-   - **B. Maximal Marginal Relevance (MMR)** — iteratively picks the candidate that best balances quality and distance from already-selected nominees
-   - **C. Uncertainty-weighted quota** — like A, but ranks within clusters by a combined quality + NN-ML disagreement score
-   - **D. Long-tail exploration** — reserves 5 slots for high-disagreement structures outside the top-500 pool
+   - **B. Maximal Marginal Relevance (MMR)** — iteratively balances RRF priority with SOAP distance from already-selected nominees
+   - **C. Uncertainty-weighted quota** — ranks within the same SOAP clusters using a combined RRF + NN–ML disagreement priority score
+   - **D. Long-tail exploration** — reserves 5 slots for high-disagreement structures outside the top-500 pool, while still enforcing diversity in SOAP space
 4. **Combined list** — structures nominated by the most strategies are selected first
 
-The script runs twice: once using PMTransformer embeddings as the diversity space, once using SOAP descriptors. SOAP-based diversity is preferred because it provides a purely geometric measure of structural similarity, independent of the learned representations.
+The paper pipeline runs **once, in SOAP space**. There is no PMTransformer-diversity nomination
+run. PMTransformer distances are used earlier, before training, to design the labeled partitions;
+SOAP alone supplies nomination geometry because it is a training-free local chemical-environment
+measure independent of the learned representation and prediction scores. RRF and disagreement
+remain ranking/prioritization signals for the main and exploration tiers.
 
-**SOAP embeddings for Step 7:** The SOAP run requires a precomputed `soap_descriptors.npz` file. This is produced as a side-effect of running **F4** (`scripts/figures/04_soap_descriptors_umap.sh`), which computes SOAP descriptors for all MOFs and caches them. After running F4, set `SOAP_EMBEDDINGS` at the top of `scripts/07_nominate_candidates.sh` to point to the cached file (e.g., `figures_output/soap_umap/soap_descriptors.npz`). If SOAP embeddings are not available, the script will only run the PMTransformer-based nomination.
+**SOAP descriptors for Step 7:** The run requires a precomputed `soap_descriptors.npz` file. It is
+produced by **F4** (`scripts/figures/04_soap_descriptors_umap.sh`) or restored from the Globus SOAP
+archive. Set `SOAP_EMBEDDINGS` in `scripts/07_nominate_candidates.sh` to that file. Missing SOAP is
+a hard prerequisite failure for the paper workflow, not a reason to fall back to PMTransformer
+nomination geometry.
 
 **Key parameters** (edit at the top of `scripts/07_nominate_candidates.sh`):
 
@@ -362,7 +396,7 @@ The script runs twice: once using PMTransformer embeddings as the diversity spac
 **Outputs:**
 
 ```
-data/unlabeled/nomination-PMT/      # PMTransformer-space run (always produced)
+data/unlabeled/nomination-SOAP/     # sole paper nomination run
 ├── FINAL_TOP25_diverse.txt          # The 25 CIF IDs for DFT
 ├── FINAL_TOP25_diverse.csv          # rank, cif_id, rrf_rank, strategies_nominating, rank_std, rank_range, nn_ml_disagreement, cluster
 ├── COMBINED_top25.txt               # union, ranked by how many strategies nominated each
@@ -375,8 +409,8 @@ data/unlabeled/nomination-PMT/      # PMTransformer-space run (always produced)
 └── plots/                           # UMAP visualisations
 ```
 
-The second (SOAP) run writes an analogous `data/unlabeled/nomination-SOAP/` directory, but only when
-`SOAP_EMBEDDINGS` is set (see above).
+All cluster labels, MMR distances, quota diversity terms, and exploration-tier diversity checks in
+this output are calculated from SOAP descriptors.
 
 ---
 
@@ -485,21 +519,24 @@ All generated figures go to `figures_output/` (git-ignored). Each script also sa
 
 ## Data
 
-Each MOF is represented by three files (`.grid`, `.griddata16`, `.graphdata`) in MOFTransformer format. Labels are JSON files mapping CIF IDs to band-gap values in eV; the classification threshold is **band gap < 1.0 eV** (positive = potentially conductive). See [data/README.md](data/README.md) for format details.
+Each MOF is represented by three files (`.grid`, `.griddata16`, `.graphdata`) in MOFTransformer format. Labels are JSON files mapping CIF IDs to band-gap values in eV; the classification threshold is **band gap <= 1.0 eV** (positive = potentially conductive). See [data/README.md](data/README.md) for format details.
 
 | Dataset | MOFs | Purpose |
 |---------|------|---------|
 | Labeled (QMOF, HSE06 level) | ~10,810 | Training + evaluation (Steps 1-5) |
 | Unlabeled (QMOF pool) | ~9,561 | Discovery screening (Steps 6-7) |
 
-The labeled set is split via Strategy D farthest-point coverage into 1,136 train (60 positives), 524 val (5 positives), and 9,150 test (9 positives) structures — 74 positives among 10,810 labelled MOFs in total. The extreme imbalance (0.10% positive rate in test, 0.68% across the labelled set) makes this a needle-in-a-haystack retrieval problem evaluated by recall@K.
+Before any task-specific training, the labeled set is split from distances in the frozen pretrained
+PMTransformer embedding space via Strategy D farthest-point coverage into 1,136 train (60
+positives), 524 validation (5 positives), and 9,150 test (9 positives) structures — 74 positives
+among 10,810 labelled MOFs in total. The extreme imbalance (0.10% positive rate in the test
+partition, 0.68% across the labelled set) makes this a needle-in-a-haystack retrieval problem
+evaluated by recall@K.
 
-> **The paper's exact split is committed.** The final membership lists used in the manuscript are
-> released at [`data/splits/strategy_d_farthest_point/`](data/splits/strategy_d_farthest_point/)
-> (`{train,val,test}_bandgaps_regression.json`, structure name → HSE06 gap in eV). Use these to
-> reproduce the paper. Re-running Step 1 regenerates a Strategy D split from scratch — the final
-> published split additionally received manual curation (see `tools/`), so a regenerated split is
-> *not* guaranteed to match the released one.
+> **The paper's exact split is recorded in the labeled PMTransformer archive.** The default Step 1
+> materializes or verifies `{train,val,test}_bandgaps_regression.json` from that authoritative
+> archive without overwriting a mismatch. `SPLIT_MODE=fresh` is explicitly noncanonical and is
+> intended for a new dataset or target; it does not claim to recreate the paper membership.
 
 ---
 
@@ -507,13 +544,13 @@ The labeled set is split via Strategy D farthest-point coverage into 1,136 train
 
 | Decision | Rationale |
 |----------|-----------|
-| **Strategy D farthest-point split** | Guarantees every val/test positive has a structurally similar training positive, yielding honest recall metrics. |
+| **Pre-fit PMTransformer farthest-point split** | Fixed pretrained local-and-global structural distances distribute scarce positive chemistries before any label-trained model can influence partition membership. |
 | **Pretrained embeddings for ML** | The 768-dim PMTransformer CLS token is a powerful structural fingerprint before any fine-tuning, providing an independent retrieval signal complementary to the fine-tuned regression model. |
-| **Multi-seed NN training** | Same architecture, different seeds produce models that agree on easy cases but disagree on hard ones, making ensemble fusion effective. |
+| **Two-model production fusion** | One fine-tuned regressor and one frozen-embedding SMOTE--ExtraTrees classifier provide complementary rankings without multiplying correlated variants. |
 | **Reciprocal Rank Fusion** | Rank-based fusion handles heterogeneous score scales (regression logits vs classification probabilities) without normalisation artifacts. |
 | **Huber loss + Spearman early stopping** | Huber is robust to outlier band gaps; Spearman rho measures ranking quality, aligning training with the discovery objective. |
 | **1 NN + 1 ML for nomination** | Simpler than multi-model ensembles; diversity comes from SOAP-based selection rather than model proliferation. Ensemble experiments with 3 NN + 2 ML remain available via Step 4. |
-| **SOAP diversity lens** | SOAP descriptors provide a purely geometric/chemical measure of structural dissimilarity, independent of the model features. This prevents the nominees from clustering in a learned-feature artifact. |
+| **SOAP-only nomination geometry** | SOAP supplies the structural-diversity coordinate for both main and exploration tiers because its training-free local-environment geometry is independent of learned model features and priority scores. |
 | **Long-tail exploration** | Reserves 5 of the 25 slots for high-uncertainty structures outside the main pool — a hedge against the ensemble's blind spots. |
 
 ---
@@ -553,14 +590,12 @@ newly assembled frameworks and to drive their PBE-D3(BJ) → HSE06 DFT validatio
 
 If you use this software, please cite the accompanying paper:
 
-> Erbil, E. Y. *et al.* Enrichment-driven discovery of low-band-gap metal–organic frameworks with
-> pretrained porous-material representations. *Manuscript in preparation* (2026).
+> Erbil, E. Y., Çağatan, Ö. V. & Dereli, B. Enrichment-driven discovery of low-band-gap metal–organic frameworks. *Manuscript in preparation* (2026).
 
 ```bibtex
 @article{erbil2026lowgapmof,
-  title   = {Enrichment-driven discovery of low-band-gap metal--organic frameworks
-             with pretrained porous-material representations},
-  author  = {Erbil, Ege Yi{\u{g}}it and others},
+  title   = {Enrichment-driven discovery of low-band-gap metal--organic frameworks},
+  author  = {Erbil, Ege Yi{\u{g}}it and \c{C}a\u{g}atan, {\"O}mer Veysel and Dereli, B{\"u}\c{s}ra},
   year    = {2026},
   note    = {Manuscript in preparation}
 }

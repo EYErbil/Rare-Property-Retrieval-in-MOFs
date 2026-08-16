@@ -4,7 +4,7 @@ Ensemble Discovery for MOF Conductivity Prediction
 =====================================================
 
 Combines predictions from multiple heterogeneous models (neural nets,
-sklearn classifiers, k-NN baselines) on the SAME test set to produce
+sklearn classifiers, k-NN baselines) on the same retrospective test partition to produce
 a single, stronger ranking for discovering conductive MOFs.
 
 The key insight: different models capture different positive MOFs.
@@ -15,9 +15,8 @@ Ensemble methods implemented (parity with past ensemble script):
   1. Reciprocal Rank Fusion (RRF) - gold standard for heterogeneous rankings
   2. Rank averaging - simple, robust
   3. Top-K majority voting - threshold-free voting
-  4. Weighted RRF - weights by individual model quality (recall@200)
+  4. Weighted RRF - fixed uniform weights for retrospective comparison
   5. Score averaging - normalize-then-average
-  6. Stacking - meta-learner on model ranks
   + Greedy complementary model selection (set-cover in top-K)
   + Ablation over model subsets (best combo by recall)
   + Per-positive analysis, complementarity matrix, robustness (subsampled/mini-splits)
@@ -238,7 +237,7 @@ def collect_predictions(prediction_dirs):
 
     common_cids = set.intersection(*all_cid_sets) if all_cid_sets else set()
     if len(common_cids) < len(all_cid_sets[0]) * 0.9:
-        print(f"  WARNING: Models have different test sets. Using intersection: {len(common_cids)} samples")
+        print(f"  WARNING: Models have different test partitions. Using intersection: {len(common_cids)} samples")
     test_cids = sorted(common_cids)
 
     for name in list(models.keys()):
@@ -515,56 +514,6 @@ def score_averaging(models, test_cids):
     return {cid: avg_scores[i] for i, cid in enumerate(test_cids)}
 
 
-def stacking_ensemble(models, test_cids, true_labels, threshold=1.0):
-    """
-    Train a logistic regression meta-learner on model scores.
-    Uses leave-one-out on the test set so the meta-learner never sees the
-    left-out sample's label when predicting it (avoids data leakage).
-    Falls back to rank averaging if stacking fails.
-    """
-    try:
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.preprocessing import StandardScaler
-    except ImportError:
-        print("  sklearn not available, falling back to rank averaging")
-        return rank_averaging(models, test_cids)
-
-    model_names = sorted(models.keys())
-    n_models = len(model_names)
-    n_samples = len(test_cids)
-
-    X = np.zeros((n_samples, n_models))
-    for j, name in enumerate(model_names):
-        scores_arr = np.array([models[name][cid] for cid in test_cids])
-        ranks = score_to_rank(scores_arr, lower_is_better=True)
-        X[:, j] = ranks / n_samples
-
-    y = np.array([1 if true_labels[cid] < threshold else 0 for cid in test_cids])
-
-    if y.sum() < 2:
-        print("  Too few positives for stacking, falling back to rank averaging")
-        return rank_averaging(models, test_cids)
-
-    meta_probs = np.zeros(n_samples)
-    meta = LogisticRegression(
-        C=0.1, class_weight='balanced', max_iter=10000, solver='lbfgs'
-    )
-    print("  Stacking: leave-one-out (no test leakage), %d fits..." % n_samples)
-    for i in range(n_samples):
-        mask = np.ones(n_samples, dtype=bool)
-        mask[i] = False
-        X_train = X[mask]
-        y_train = y[mask]
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        xi = scaler.transform(X[i : i + 1])
-        meta.fit(X_train_scaled, y_train)
-        meta_probs[i] = meta.predict_proba(xi)[0, 1]
-
-    max_prob = meta_probs.max()
-    return {cid: max_prob - meta_probs[i] for i, cid in enumerate(test_cids)}
-
-
 def greedy_ensemble_forward_selection(models, test_cids, true_labels, threshold=1.0,
                                        metric='recall@50', max_models=15, rrf_k=60):
     """
@@ -574,7 +523,7 @@ def greedy_ensemble_forward_selection(models, test_cids, true_labels, threshold=
 
     Note: Best combo is selected using test-set performance, so the reported
     "best" metric is optimistic (selection bias). Use the recommended combo
-    on a held-out set for an unbiased estimate.
+    on an untouched external benchmark for an unbiased estimate.
 
     Returns dict with keys:
       - order_rrf, order_rank_avg: list of model names in order added
@@ -652,9 +601,9 @@ def ablation_rrf(models, test_cids, true_labels, threshold=1.0, k=60, metric='re
     Try RRF with every subset of models to find the best combination.
     Only practical with <= 15 models.
 
-    Note: Best subset is selected on the test set, so the reported metric
+    Note: Best subset is selected on the retrospective test partition, so the reported metric
     is optimistic (selection bias). For unbiased evaluation, use the
-    chosen subset on a held-out set.
+    chosen subset on an untouched external benchmark.
 
     metric: 'recall@25', 'recall@50', 'recall@100', 'recall@200', or 'composite'.
       - Single metric: maximize that recall (e.g. recall@50 = find targets in first 50).
@@ -1378,15 +1327,6 @@ def main():
     save_ensemble_predictions(test_cids, wrrf_scores, true_labels, 'weighted_rrf',
                               args.output_dir, args.threshold)
 
-    # 5f. Stacking
-    print(f"\n--- Ensemble: Stacking (LogReg meta-learner) ---")
-    stack_scores = stacking_ensemble(models, test_cids, true_labels, args.threshold)
-    m_stack = compute_ranking_metrics(test_cids, stack_scores, true_labels, args.threshold)
-    print_metrics_report("Stacking (LogReg)", m_stack)
-    ensemble_metrics['stacking'] = m_stack
-    save_ensemble_predictions(test_cids, stack_scores, true_labels, 'stacking',
-                              args.output_dir, args.threshold)
-
     # =========================================================================
     # 6. ABLATION (optional)
     # =========================================================================
@@ -1430,7 +1370,6 @@ def main():
             'rank_avg': ra_scores,
             'score_avg': sa_scores,
             'weighted_rrf': wrrf_scores,
-            'stacking': stack_scores,
         }
 
         print(f"\n  --- Subsampled evaluation (N={args.n_subsample}, 30 resamples) ---")
@@ -1491,7 +1430,6 @@ def main():
         ('rank_avg', ra_scores),
         ('score_avg', sa_scores),
         ('weighted_rrf', wrrf_scores),
-        ('stacking', stack_scores),
     ]
     if args.ablation and best_combo:
         sub_models = {n: models[n] for n in best_combo}

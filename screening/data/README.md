@@ -3,21 +3,32 @@
 This directory should contain the MOF datasets used by the pipeline.
 The MOF structure files are **not included** in this repository due to their size.
 
-**Included: the paper's exact split.** The final train/val/test membership lists used in the
+**Included: the paper's exact partitions.** The final train/validation/test membership lists used in the
 manuscript are committed at `splits/strategy_d_farthest_point/{train,val,test}_bandgaps_regression.json`
 (1,136 / 524 / 9,150 structures; 60 / 5 / 9 low-band-gap positives). These JSONs are the ground
-truth for reproducing the paper — the structure files (`.grid`/`.griddata16`/`.graphdata`) still
-have to be prepared (Step 0) and placed/symlinked per split as described below. Re-running
-`embedding_split.py` creates a *fresh* Strategy D split and will overwrite/deviate from the
-released one; only do that for new datasets.
+truth for reproducing the paper. Restore the labeled Globus archive to
+`embeddings/embeddings_pretrained.npz`; the default Step 1 verifies the committed JSONs against its
+recorded split labels and never overwrites them. The structure files
+(`.grid`/`.griddata16`/`.graphdata`) still have to be prepared (Step 0) and placed/symlinked per
+split as described below. Use `SPLIT_MODE=fresh` only for a new dataset or target; it writes to a
+separate `noncanonical/<run-id>/` tree.
+
+Partition membership was designed before any task-specific training from distances in the frozen
+pretrained PMTransformer embedding space. The `data/raw/test/` name used below is merely a
+MOFTransformer input-layout convention for an unsplit pool; it is not the paper's labeled test
+partition.
 
 ## Expected Structure
 
-After Step 0 (preprocessing) and Step 1 (embedding extraction + splitting), the directory will look like this:
+After Step 0 (preprocessing) and Step 1 (canonical materialization/verification), the directory
+will look like this:
 
 ### Labeled data before Strategy D (`data/raw/`)
 
-`scripts/01_extract_embeddings.sh` calls `analyze_embeddings.py` with `--data_dir` pointing at `data/raw/`. That script walks **train**, **val**, and **test** splits: for each split it expects `data/raw/<split>/` (MOFTransformer files) **and** a label file `data/raw/<split>_bandgaps_regression.json` if that split exists.
+Only explicit `SPLIT_MODE=fresh` calls `analyze_embeddings.py` with `--data_dir` pointing at
+`data/raw/`. That script walks **train**, **val**, and **test** inputs: for each one it expects
+`data/raw/<split>/` (MOFTransformer files) and a matching
+`data/raw/<split>_bandgaps_regression.json` when that split exists.
 
 **Layout A — single pool (simplest):** put **all** labeled structures under `data/raw/test/` and **all** bandgaps in `data/raw/test_bandgaps_regression.json` only. Train/val JSONs and folders may be absent; embeddings are extracted from the test pool only, then `embedding_split.py` (still reading labels from `data/raw/`) builds Strategy D under `data/splits/`.
 
@@ -93,7 +104,7 @@ throughout both repositories — and simply store the new property's values:
 }
 ```
 
-**Classification threshold:** bandgap < 1.0 eV → "positive" (potentially conductive).
+**Classification threshold:** bandgap <= 1.0 eV → "positive" (potentially conductive).
 
 For the **unlabeled** set, create `test_bandgaps_regression.json` with placeholder values:
 
@@ -121,5 +132,8 @@ The raw data originates from the **QMOF Database**:
    ```json
    {"QMOF-a1b2c3": 0.42, "QMOF-d4e5f6": 2.15, ...}
    ```
-5. Run Step 1 (`scripts/01_extract_embeddings.sh`) — this extracts embeddings and creates Strategy D train/val/test splits under `data/splits/`.
+5. Restore the labeled PMTransformer archive and run Step 1
+   (`scripts/01_extract_embeddings.sh`); paper mode verifies/materializes its recorded partition and
+   links the preprocessed structures. Only explicit `SPLIT_MODE=fresh` extracts new embeddings and
+   designs a noncanonical split.
 6. For discovery (Steps 6-7), prepare a separate unlabeled set in `data/unlabeled/test/` with a placeholder `data/unlabeled/test_bandgaps_regression.json`.

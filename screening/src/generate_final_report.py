@@ -122,7 +122,7 @@ def nice_name(model_name):
         'rrf_k100': 'RRF k=100', 'rrf_k200': 'RRF k=200',
         'rank_avg': 'Rank avg', 'score_avg': 'Score avg',
         'ensemble_avg': 'Ensemble (score avg)', 'ensemble_rank_avg': 'Ensemble (rank avg)',
-        'weighted_rrf': 'Weighted RRF', 'stacking': 'Stacking',
+        'weighted_rrf': 'Weighted RRF',
         'ablation_best': 'Ablation best',
     }
     if model_name in mapping:
@@ -151,7 +151,7 @@ def is_ensemble_model(model_name):
     if 'ensemble_avg' in s or 'ensemble_rank_avg' in s:
         return True
     return (s.startswith('rrf_k') or s in (
-        'rank_avg', 'score_avg', 'weighted_rrf', 'stacking', 'ablation_best'
+        'rank_avg', 'score_avg', 'weighted_rrf', 'ablation_best'
     ) or s.startswith('vote_top'))
 
 
@@ -581,7 +581,6 @@ def fig2_recall_at_k_curves(data, output_dir):
     ens_methods = [
         ('rrf_k60', 'RRF Ensemble', '#d62728', '-'),
         ('weighted_rrf', 'Weighted RRF', '#9467bd', '--'),
-        ('stacking', 'Stacking', '#8c564b', '-.'),
     ]
     for ens_key, label, color, ls in ens_methods:
         if ens_key in sel.get('ensemble_methods', {}):
@@ -703,14 +702,13 @@ def fig4_ensemble_method_comparison(data, output_dir):
     ens = sel.get('ensemble_methods', {})
 
     method_order = ['rrf_k60', 'weighted_rrf', 'rank_avg', 'vote_top200',
-                    'score_avg', 'stacking']
+                    'score_avg']
     method_labels = {
         'rrf_k60': 'RRF (k=60)',
         'weighted_rrf': 'Weighted\nRRF',
         'rank_avg': 'Rank\nAverage',
         'vote_top200': 'Top-200\nVoting',
         'score_avg': 'Score\nAverage',
-        'stacking': 'Stacking\n(LogReg)',
     }
 
     methods = [m for m in method_order if m in ens]
@@ -1155,7 +1153,7 @@ def fig10_bandgap_vs_rank(data, output_dir):
 def fig11_robustness_boxplots(data, output_dir):
     """
     Bar chart (with error bars) of recall@100 and recall@200 from subsampled evaluation.
-    Uses a fixed set of 5 ensemble methods (RRF, W-RRF, Rank Avg, Score Avg, Stacking)
+    Uses a fixed set of four label-free ensemble methods (RRF, W-RRF, Rank Avg, Score Avg)
     — not all ensembles, and not a 'best' selection. Only methods present in the
     primary run's subsampled_evaluation are plotted.
     """
@@ -1168,10 +1166,10 @@ def fig11_robustness_boxplots(data, output_dir):
         print("  Skipping fig11: no subsampled evaluation data")
         return
 
-    methods = ['rrf_k60', 'weighted_rrf', 'rank_avg', 'score_avg', 'stacking']
+    methods = ['rrf_k60', 'weighted_rrf', 'rank_avg', 'score_avg']
     method_labels = {
         'rrf_k60': 'RRF', 'weighted_rrf': 'W-RRF', 'rank_avg': 'Rank Avg',
-        'score_avg': 'Score Avg', 'stacking': 'Stacking',
+        'score_avg': 'Score Avg',
     }
     available = [m for m in methods if m in sub_eval]
 
@@ -1200,7 +1198,7 @@ def fig11_robustness_boxplots(data, output_dir):
         ax.set_ylim(0, 1.05)
 
     fig.suptitle('Robustness: Subsampled Evaluation (N=1500, 30 resamples)\n'
-                 'Fixed set: RRF, W-RRF, Rank Avg, Score Avg, Stacking. Error bars = std across resamples.',
+                 'Fixed set: RRF, W-RRF, Rank Avg, Score Avg. Error bars = std across resamples.',
                  fontsize=13, fontweight='bold')
     plt.tight_layout()
     path = os.path.join(output_dir, 'fig11_robustness_boxplots.png')
@@ -1881,7 +1879,7 @@ def generate_summary_report(data, output_dir):
     else:
         lines.append("| Method | FHR | R@50 | R@100 | R@200 | MRR |")
         lines.append("|--------|-----|------|-------|-------|-----|")
-        for name in ['rrf_k60', 'weighted_rrf', 'rank_avg', 'vote_top200', 'score_avg', 'stacking']:
+        for name in ['rrf_k60', 'weighted_rrf', 'rank_avg', 'vote_top200', 'score_avg']:
             if name in ens:
                 m = ens[name]
                 lines.append(f"| {name} | {m.get('first_hit_rank', '?'):.0f} | "
@@ -2009,7 +2007,7 @@ def generate_summary_report(data, output_dir):
             lines.append("")
             if sub:
                 lines.append("Subsampled evaluation (N=1500, 30 resamples): mean ± std across resamples.")
-                for method in ['rrf_k60', 'rank_avg', 'stacking']:
+                for method in ['rrf_k60', 'rank_avg']:
                     if method not in sub:
                         continue
                     s = sub[method]

@@ -3,24 +3,35 @@
 Embedding-Space Classifiers for MOF Discovery
 ================================================
 
-Train fast analytical classifiers DIRECTLY on pretrained MOFTransformer embeddings.
-These bypass the entire fine-tuning pipeline and run in seconds on CPU.
+Train analytical classifiers directly on frozen, pretrained MOFTransformer
+embeddings. This is the historical production/comparison program underlying the
+released SMOTE--ExtraTrees classifier.
+
+Protocol note:
+  - The production classifier combines the predefined training and validation
+    partitions before oversampling and estimator fitting.
+  - The test partition is excluded from production fitting. Because this script
+    compares candidate models on that partition, its test scores are
+    retrospective model-comparison results, not an untouched external estimate.
+  - The production artifact is ``smote_extra_trees``. Other methods below are
+    exploratory comparators.
 
 Why this may beat neural fine-tuning:
-  - With only 58 train positives, fine-tuning a 12-layer ViT is severely
-    overparameterized. Gradient-based training sees each positive ~once per
+  - With only 65 train-plus-validation positives, fine-tuning a 12-layer ViT is
+    severely overparameterized. Gradient-based training sees each positive ~once per
     epoch and can't learn stable decision boundaries.
   - These classifiers operate on FIXED 768-dim embeddings and train with
     stable analytical/convex optimizers (LBFGS, QP, etc.).
   - Strong regularization (C=0.01 in logistic regression) prevents overfitting.
-  - Cross-validation selects hyperparameters automatically.
+  - Methods that expose a cross-validation search tune their own parameters;
+    the production ExtraTrees hyperparameters are fixed explicitly below.
   - The full pipeline (extract + train + predict) takes ~20 seconds on CPU.
 
 Methods:
   1. Logistic Regression (L2-regularized, CV-tuned C)
   2. SVM with RBF kernel (captures nonlinear bandgap-structure relationships)
   3. Random Forest (ensemble of decision trees, feature importance)
-  4. Gradient Boosted Trees (XGBoost-style, if available)
+  4. scikit-learn Gradient Boosting (with XGBoost regression compared separately)
   5. LDA (Linear Discriminant Analysis - optimal linear boundary)
   6. Mahalanobis distance to positive class centroid
   7. Gaussian Naive Bayes (probabilistic class model)
@@ -90,7 +101,7 @@ def load_embeddings(npz_path):
     return cif_ids, embeddings, bandgaps, splits
 
 
-def override_splits_from_labels(cif_ids, bandgaps, labels_dir):
+def override_splits_from_labels(cif_ids, bandgaps, labels_dir, threshold=1.0):
     """Override split assignments by reading label JSON files from labels_dir.
     
     The labels_dir should contain:
@@ -120,7 +131,8 @@ def override_splits_from_labels(cif_ids, bandgaps, labels_dir):
                 new_splits[idx] = split_name
                 new_bandgaps[idx] = float(bg)
                 matched += 1
-        n_pos = sum(1 for bg in label_data.values() if float(bg) < 1.0)
+        n_pos = sum(1 for bg in label_data.values()
+                    if float(bg) <= threshold)
         print(f"  {split_name}: {len(label_data)} in labels, {matched} matched to embeddings, {n_pos} positives")
         if matched < len(label_data):
             print(f"  WARNING: {len(label_data) - matched} CIFs in labels not found in .npz (re-run analyze_embeddings.py with a splits_dir that includes all MOFs).")
@@ -145,7 +157,8 @@ def prepare_data(cif_ids, embeddings, bandgaps, splits, threshold=1.0,
     """
     if labels_dir is not None:
         print(f"  Overriding splits from: {labels_dir}")
-        splits, bandgaps = override_splits_from_labels(cif_ids, bandgaps, labels_dir)
+        splits, bandgaps = override_splits_from_labels(
+            cif_ids, bandgaps, labels_dir, threshold)
     
     train_mask = np.array([s == 'train' for s in splits])
     val_mask = np.array([s == 'val' for s in splits])
@@ -153,18 +166,18 @@ def prepare_data(cif_ids, embeddings, bandgaps, splits, threshold=1.0,
 
     X_train = embeddings[train_mask]
     y_train_bg = bandgaps[train_mask]
-    y_train = (y_train_bg < threshold).astype(int)
+    y_train = (y_train_bg <= threshold).astype(int)
 
     X_val = embeddings[val_mask]
     y_val_bg = bandgaps[val_mask]
-    y_val = (y_val_bg < threshold).astype(int)
+    y_val = (y_val_bg <= threshold).astype(int)
 
     X_test = embeddings[test_mask]
     y_test_bg = bandgaps[test_mask]
-    y_test = (y_test_bg < threshold).astype(int)
+    y_test = (y_test_bg <= threshold).astype(int)
     test_cids = [cif_ids[i] for i, s in enumerate(splits) if s == 'test']
 
-    # Combine train+val for final training (mirroring strategy B)
+    # Production fitting set: predefined training + validation partitions.
     X_trainval = np.vstack([X_train, X_val]) if len(X_val) > 0 else X_train
     y_trainval = np.concatenate([y_train, y_val]) if len(y_val) > 0 else y_train
     y_trainval_bg = np.concatenate([y_train_bg, y_val_bg]) if len(y_val_bg) > 0 else y_train_bg
@@ -197,7 +210,7 @@ def compute_ranking_metrics(test_cids, scores, true_bandgaps, threshold=1.0):
     """
     Ks = [10, 25, 50, 100, 200, 500]
     n_total = len(scores)
-    is_positive = true_bandgaps < threshold
+    is_positive = true_bandgaps <= threshold
     n_positive = int(is_positive.sum())
     prevalence = n_positive / n_total if n_total > 0 else 0
 
@@ -293,7 +306,7 @@ def save_predictions(test_cids, scores, true_bandgaps, method_name, output_dir, 
             #
             # The score convention matters for mode tag:
             # - regression mode: lower score = more positive (predicted bandgap)
-            # - multiclass mode: higher score = more positive (class-0 prob)
+            # - multiclass mode: higher score = more positive (class-1 probability)
             #
             # Since our scores are "higher = more positive", use multiclass mode
             score = scores[i]
@@ -307,8 +320,12 @@ def save_predictions(test_cids, scores, true_bandgaps, method_name, output_dir, 
         json.dump({
             'method': method_name,
             'checkpoints': {
-                'best_auc_recall_score': 0.5,  # placeholder
+                # Legacy compatibility value consumed by ensemble_discovery.py;
+                # this is not a validation-selection score.
+                'best_auc_recall_score': 0.5,
             },
+            'metric_note': ('Legacy compatibility placeholder; candidate models '
+                            'were compared retrospectively on the test partition.'),
         }, f, indent=2)
 
     return csv_path
@@ -533,9 +550,8 @@ def mahalanobis_ranking(data, output_dir, threshold=1.0):
     print("\n--- Mahalanobis Distance to Positive Class ---")
 
     scaler = StandardScaler()
-    X_all = scaler.fit_transform(np.vstack([data['X_trainval'], data['X_test']]))
-    X_train_s = X_all[:len(data['X_trainval'])]
-    X_test_s = X_all[len(data['X_trainval']):]
+    X_train_s = scaler.fit_transform(data['X_trainval'])
+    X_test_s = scaler.transform(data['X_test'])
     y_train = data['y_trainval']
 
     # Positive class stats
@@ -678,10 +694,8 @@ def isolation_forest_ranking(data, output_dir, threshold=1.0):
     print("\n--- Isolation Forest (fit on positives only) ---")
 
     scaler = StandardScaler()
-    X_all = np.vstack([data['X_trainval'], data['X_test']])
-    X_all_s = scaler.fit_transform(X_all)
-    X_train_s = X_all_s[:len(data['X_trainval'])]
-    X_test_s = X_all_s[len(data['X_trainval']):]
+    X_train_s = scaler.fit_transform(data['X_trainval'])
+    X_test_s = scaler.transform(data['X_test'])
     y_train = data['y_trainval']
 
     pos_mask = y_train == 1
@@ -1165,7 +1179,11 @@ def smote_manual(X, y, n_synthetic_per_pos=5, k_neighbors=5, random_state=42):
 
 
 def train_with_smote(data, output_dir, threshold=1.0, n_synthetic=5):
-    """Train top classifiers on SMOTE-augmented data (no class_weight needed)."""
+    """Fit the production SMOTE--ExtraTrees branch and two comparators.
+
+    Oversampling and fitting use only the combined training+validation set.
+    The test partition is scored after fitting and is never passed to SMOTE.
+    """
     from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier
     from sklearn.ensemble import GradientBoostingClassifier
 
@@ -1181,7 +1199,7 @@ def train_with_smote(data, output_dir, threshold=1.0, n_synthetic=5):
 
     print("\n--- Extra Trees + SMOTE ---")
     model = ExtraTreesClassifier(
-        n_estimators=500, max_depth=None,
+        n_estimators=500, max_depth=None, max_features='sqrt',
         min_samples_leaf=3, random_state=42, n_jobs=-1,
     )
     model.fit(X_aug, y_aug)
@@ -1190,7 +1208,13 @@ def train_with_smote(data, output_dir, threshold=1.0, n_synthetic=5):
     print_metrics("Extra Trees + SMOTE", m)
     save_predictions(data['test_cids'], probs, data['y_test_bg'],
                      'smote_extra_trees', output_dir, threshold)
-    save_model_artifacts(output_dir, 'smote_extra_trees', model=model)
+    save_model_artifacts(
+        output_dir, 'smote_extra_trees', model=model,
+        fit_partition='train_plus_validation',
+        n_real_fit_rows=int(len(data['y_trainval'])),
+        n_real_fit_positives=int(data['y_trainval'].sum()),
+        n_synthetic_per_positive=int(n_synthetic),
+        positive_rule=f'bandgap <= {threshold} eV')
     all_metrics['smote_extra_trees'] = m
 
     print("\n--- Random Forest + SMOTE ---")
@@ -1451,7 +1475,7 @@ def main():
     parser.add_argument('--output_dir', type=str, default='./embedding_classifiers',
                         help='Output directory for predictions and results')
     parser.add_argument('--threshold', type=float, default=1.0,
-                        help='Bandgap threshold for positive class (eV)')
+                        help='Positive class is bandgap <= threshold (eV)')
     parser.add_argument('--skip_slow', action='store_true',
                         help='Skip slow methods (SVM, GB)')
     parser.add_argument('--labels_dir', type=str, default=None,
@@ -1476,6 +1500,9 @@ def main():
     cif_ids, embeddings, bandgaps, splits = load_embeddings(args.embeddings_path)
     data = prepare_data(cif_ids, embeddings, bandgaps, splits, args.threshold,
                         labels_dir=args.labels_dir)
+    print('\nProtocol: production fitting uses train+validation; the test '
+          'partition is excluded from fitting but is used below for '
+          'retrospective model comparison.')
 
     all_probs = []
     all_metrics = {}
@@ -1651,7 +1678,7 @@ def main():
     # COMPARISON TABLE
     # =========================================================================
     print(f"\n\n{'#'*90}")
-    print(f"  FINAL COMPARISON -- ALL EMBEDDING-SPACE METHODS")
+    print(f"  RETROSPECTIVE TEST-PARTITION COMPARISON -- ALL EMBEDDING-SPACE METHODS")
     print(f"{'#'*90}")
     print(f"  {'Method':<35s}  {'FHR':>5s}  {'R@25':>5s}  {'R@50':>5s}  "
           f"{'R@100':>5s}  {'R@200':>5s}  {'MRR':>6s}  {'Spear':>6s}")

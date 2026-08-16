@@ -20,11 +20,14 @@ chemical completeness, all canonicalised by Open Babel:
            [*] dummy attachment atoms (100% faithful to the generator).
   Hcap   : connection points replaced by H -> the neutral parent scaffold, a
            real molecule that resolves in PubChem.
-  COOHcap: connection points replaced by -C(=O)OH. The node-block analysis (see
-           analyze_nodes()) shows every edge connection point bonds to a node
-           carboxylate carbon, so this is the ditopic carboxylic-acid linker as
-           it exists in the framework. Capping is a structural fact from the
-           bond graph, then canonicalised by software.
+  linker : connection points completed with the coordinating group supplied by
+           the paired node: -C(=O)OH for the five carboxylate frameworks and
+           -C#N for qtz+N307+E146. E146's stored pyrazolate graph is then
+           neutralised to its one-proton parent for molecular identification.
+
+Open Babel's coordinate-derived stereochemical perception is retained for
+E151. Its stereospecific key therefore comes from the stored building-block
+coordinates, not from a hand-assigned stereochemical label.
 
 Metal nodes are not given SMILES (Open Babel organic perception is not meant for
 metal-oxo clusters); they are characterised from the bond graph instead: metal,
@@ -55,9 +58,17 @@ GENERATED = {
     "pcu+N273+E44":  dict(topology="pcu", cn=6, node="N273", edge="E44"),
     "pcu+N273+E128": dict(topology="pcu", cn=6, node="N273", edge="E128"),
     "cds+N29+E128":  dict(topology="cds", cn=4, node="N29",  edge="E128"),
+    "qtz+N307+E146": dict(topology="qtz", cn=4, node="N307", edge="E146"),
 }
 
 BOND_SDF = {"A": 4, "S": 1, "D": 2, "T": 3}  # MDL: 4=aromatic,1,2,3
+
+NEUTRAL_LINKER_OVERRIDES = {
+    "E146": (
+        "N#Cc1[nH]nc(c1)C#N",
+        "neutral one-proton parent for lookup; framework graph is monoanionic",
+    ),
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -93,6 +104,7 @@ def build_sdf(atoms, bonds, x_mode: str) -> str:
       'COOH'  -> each X becomes a carboxyl carbon C(=O)OH (X kept as the carboxyl
                  carbon, with O=, O-H added). Position-independent, so no SMILES
                  string surgery is needed.
+      'CN'    -> each X becomes a nitrile carbon with a triple-bonded nitrogen.
     """
     out_atoms = [list(a) for a in atoms]   # [sym,x,y,z]
     out_bonds = [list(b) for b in bonds]   # [i,j,code]
@@ -113,6 +125,15 @@ def build_sdf(atoms, bonds, x_mode: str) -> str:
             out_bonds.append([k, od, "D"])               # C=O
             out_bonds.append([k, os_, "S"])              # C-O
             out_bonds.append([os_, ho, "S"])             # O-H
+    elif x_mode == "CN":
+        for k, a in enumerate(out_atoms):
+            if a[0] != "X":
+                continue
+            a[0] = "C"
+            bx, by, bz = a[1], a[2], a[3]
+            ni = len(out_atoms)
+            out_atoms.append(["N", bx + 0.7, by + 0.7, bz])
+            out_bonds.append([k, ni, "T"])
     else:
         raise ValueError(x_mode)
 
@@ -186,12 +207,15 @@ def analyze_node(bb_id: str) -> dict:
         if sym[j] == "C" and sym[i] == "O":
             o_neighbors[j] += 1
     n_carboxylate = sum(1 for c, k in o_neighbors.items() if k >= 2)
+    n_cyano = sum(1 for i, j, code in bonds
+                  if code == "T" and {sym[i], sym[j]} == {"C", "N"})
     metals = sorted({s for s in elem if s in METALS}, key=lambda s: -elem[s])
     return dict(
         node=bb_id,
         metal="/".join(metals) or "?",
         n_metal=sum(elem[m] for m in metals),
         n_carboxylate=n_carboxylate,
+        n_cyano=n_cyano,
         n_Cl=elem.get("Cl", 0),
         n_O=elem.get("O", 0),
         connection_points=n_x,
@@ -210,16 +234,22 @@ def analyze_edge(bb_id: str) -> dict:
 
     sdf_dummy = build_sdf(atoms, bonds, "dummy")
     sdf_h = build_sdf(atoms, bonds, "H")
-    sdf_cooh = build_sdf(atoms, bonds, "COOH")
+    cap_mode = "CN" if bb_id == "E146" else "COOH"
+    sdf_linker = build_sdf(atoms, bonds, cap_mode)
 
     smi_bb = sdf_to(sdf_dummy, "can")          # connection pts as [*]
     smi_h = sdf_to(sdf_h, "can")               # H-capped parent
     inchikey_h = sdf_to(sdf_h, "inchikey")
 
-    # COOH-capped: connection points turned into carboxyl carbons at the SDF
-    # level (each edge connection point bonds to a node carboxylate carbon).
-    smi_cooh = sdf_to(sdf_cooh, "can")
-    inchikey_cooh = sdf_to(sdf_cooh, "inchikey")
+    # Complete the edge with the coordinating group supplied by its paired node.
+    smi_linker = sdf_to(sdf_linker, "can")
+    inchikey_linker = sdf_to(sdf_linker, "inchikey")
+    identifier_note = ""
+    if bb_id in NEUTRAL_LINKER_OVERRIDES:
+        neutral_smiles, identifier_note = NEUTRAL_LINKER_OVERRIDES[bb_id]
+        smi_linker = smi_to(neutral_smiles, "can")
+        inchikey_linker = smi_to(neutral_smiles, "inchikey")
+    formula_linker = ob_formula(smi_linker)
 
     return dict(
         edge=bb_id,
@@ -229,9 +259,14 @@ def analyze_edge(bb_id: str) -> dict:
         smiles_Hcap=smi_h,
         inchikey_Hcap=inchikey_h,
         ob_formula_Hcap=ob_formula(smi_h),
-        smiles_COOHcap=smi_cooh,
-        inchikey_COOHcap=inchikey_cooh,
-        ob_formula_COOHcap=ob_formula(smi_cooh),
+        smiles_linker=smi_linker,
+        inchikey_linker=inchikey_linker,
+        ob_formula_linker=formula_linker,
+        identifier_note=identifier_note,
+        # Backward-compatible columns for carboxylate-only downstream readers.
+        smiles_COOHcap=smi_linker if cap_mode == "COOH" else "",
+        inchikey_COOHcap=inchikey_linker if cap_mode == "COOH" else "",
+        ob_formula_COOHcap=formula_linker if cap_mode == "COOH" else "",
     )
 
 
@@ -256,19 +291,24 @@ def main() -> None:
     # combined per-MOF markdown
     md = ["# Software-derived chemical identifiers for the generated MOFs\n\n",
           "All SMILES/InChIKey/formula produced by Open Babel from the PORMAKE "
-          "building-block bond graphs. Names intentionally omitted -- resolve "
-          "each InChIKey at PubChem.\n\n",
+          "building-block bond graphs. E151 retains coordinate-derived "
+          "stereochemistry. E146 is reported as its neutral one-proton parent "
+          "for lookup; its framework graph remains monoanionic.\n\n",
           "## Per-MOF summary\n\n",
-          "| MOF | topology (cn) | node SBU | edge | linker formula (parent) | "
-          "linker SMILES (carboxylic-acid form) | InChIKey (acid) |\n",
+          "| MOF | topology (cn) | node SBU | edge | coordinating-linker formula | "
+          "coordinating-linker SMILES | InChIKey |\n",
           "|---|---|---|---|---|---|---|\n"]
     for name, g in GENERATED.items():
         e = edge_rows[g["edge"]]; n = node_rows[g["node"]]
-        sbu = (f"{n['metal']}{n['n_metal']} cluster, {n['n_carboxylate']} "
-               f"carboxylate, {n['n_Cl']} Cl")
+        if n["n_carboxylate"]:
+            sbu = (f"{n['metal']}{n['n_metal']} cluster, {n['n_carboxylate']} "
+                   f"carboxylate, {n['n_Cl']} Cl")
+        else:
+            sbu = (f"{n['metal']}{n['n_metal']} center, "
+                   f"{n['n_cyano']} cyano coordination arms")
         md.append(f"| {name} | {g['topology']} ({g['cn']}) | {sbu} | {g['edge']} | "
-                  f"{e['ob_formula_Hcap']} | `{e['smiles_COOHcap']}` | "
-                  f"{e['inchikey_COOHcap']} |\n")
+                  f"{e['ob_formula_linker']} | `{e['smiles_linker']}` | "
+                  f"{e['inchikey_linker']} |\n")
 
     md.append("\n## Edge (linker) blocks -- full identifier set\n\n")
     for e_id, e in edge_rows.items():
@@ -277,26 +317,29 @@ def main() -> None:
         md.append(f"- SMILES, attachment-point form: `{e['smiles_bb']}`\n")
         md.append(f"- SMILES, H-capped parent: `{e['smiles_Hcap']}`  "
                   f"(InChIKey {e['inchikey_Hcap']})\n")
-        md.append(f"- SMILES, carboxylic-acid form: `{e['smiles_COOHcap']}`  "
-                  f"(InChIKey {e['inchikey_COOHcap']})\n")
-        md.append(f"- Open Babel formula (parent): `{e['ob_formula_Hcap']}`\n")
+        md.append(f"- SMILES, coordinating-linker form: `{e['smiles_linker']}`  "
+                  f"(InChIKey {e['inchikey_linker']})\n")
+        md.append(f"- coordinating-linker formula: `{e['ob_formula_linker']}`\n")
+        if e["identifier_note"]:
+            md.append(f"- identifier note: {e['identifier_note']}\n")
 
     md.append("\n## Node (metal SBU) blocks\n\n")
-    md.append("| node | metal | n_metal | carboxylates | Cl | O | connection pts | formula |\n")
-    md.append("|---|---|---|---|---|---|---|---|\n")
+    md.append("| node | metal | n_metal | carboxylates | cyano arms | Cl | O | connection pts | formula |\n")
+    md.append("|---|---|---|---|---|---|---|---|---|\n")
     for n_id, n in node_rows.items():
         md.append(f"| {n_id} | {n['metal']} | {n['n_metal']} | {n['n_carboxylate']} | "
-                  f"{n['n_Cl']} | {n['n_O']} | {n['connection_points']} | {n['formula']} |\n")
+                  f"{n['n_cyano']} | {n['n_Cl']} | {n['n_O']} | "
+                  f"{n['connection_points']} | {n['formula']} |\n")
 
     (HERE / "chemical_identifiers.md").write_text("".join(md), encoding="utf-8")
 
     # console
     print("EDGES (linkers):")
     for e_id, e in edge_rows.items():
-        print(f"\n  {e_id}: connect={e['n_connect']}  parent_formula={e['ob_formula_Hcap']}")
+        print(f"\n  {e_id}: connect={e['n_connect']}  linker_formula={e['ob_formula_linker']}")
         print(f"    bb SMILES   : {e['smiles_bb']}")
         print(f"    H-cap SMILES: {e['smiles_Hcap']}   {e['inchikey_Hcap']}")
-        print(f"    COOH SMILES : {e['smiles_COOHcap']}   {e['inchikey_COOHcap']}")
+        print(f"    linker SMILES: {e['smiles_linker']}   {e['inchikey_linker']}")
     print("\nNODES (SBUs):")
     for n_id, n in node_rows.items():
         print(f"  {n_id}: {n['metal']}{n['n_metal']}  carboxylate={n['n_carboxylate']}  "

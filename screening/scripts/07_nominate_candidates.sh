@@ -9,34 +9,13 @@
 #SBATCH --error=logs/07_nomination_%j.err
 #SBATCH --mail-type=ALL
 
-# =============================================================================
-# STEP 7: Diversity-Aware DFT Candidate Nomination
-# =============================================================================
-#
-# Selects the final top-25 structures for DFT bandgap calculation using a
-# diversity-aware pipeline:
-#   1. RRF fusion of 1 NN + 1 ML model predictions
-#   2. Cluster the top-500 shortlist in embedding space
-#   3. Four diversity-aware strategies (cluster quota, MMR, uncertainty-
-#      weighted quota, long-tail exploration) produce nominees
-#   4. Combined best-of-all final 25
-#
-# Two runs are performed: one using PMTransformer embeddings for diversity,
-# one using SOAP descriptors. SOAP-based diversity produces better structural
-# spread because it measures purely geometric/chemical similarity independent
-# of the learned representations used for scoring.
-#
-# PREREQUISITES:
-#   - Steps 02-03 completed (trained models exist)
-#   - Step 06 completed (embeddings + predictions for unlabeled set)
-#   - SOAP descriptors computed (soap_descriptors.npz)
-#
-# CONFIGURATION:
-#   Edit the variables below to match your model paths.
-#
-# USAGE:
-#   sbatch scripts/07_nominate_candidates.sh
-# =============================================================================
+# Paper candidate-selection entrypoint for the unlabeled QMOF pool.
+# Predictive scores come from one fine-tuned PMTransformer regressor and one
+# SMOTE--ExtraTrees classifier on frozen PMTransformer embeddings. Candidate
+# diversity is evaluated only in SOAP space: this training-free geometric
+# coordinate avoids selecting near-duplicates using the same representation
+# that supplies the predictive scores. RRF and disagreement remain priority
+# signals; neither is treated as a structural-diversity coordinate.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,97 +24,52 @@ load_modules
 cd "$BASE_DIR"
 mkdir -p logs
 
-# --- Configuration ----------------------------------------------------------
-# Paths to model predictions (1 NN + 1 ML recommended)
-NN_EXP="exp364_fulltune"
-ML_METHOD="extra_trees"
+NN_EXP="${NN_EXP:-exp364_fulltune}"
+ML_METHOD="${ML_METHOD:-smote_extra_trees}"
+NN_CSV="${NN_CSV:-$EXP_BASE/$NN_EXP/inference_predictions.csv}"
+ML_CSV="${ML_CSV:-$DISCOVERY_DATA/ml_predictions/$ML_METHOD/test_predictions.csv}"
+SOAP_EMBEDDINGS="${SOAP_EMBEDDINGS:-$BASE_DIR/../generation/soap_analysis/soap_descriptors_sparse.npz}"
+SOAP_KEY="${SOAP_KEY:-soap_descriptors}"
+OUTPUT_DIR="${OUTPUT_DIR:-$DISCOVERY_DATA/nomination-SOAP}"
 
-NN_CSV="$EXP_BASE/$NN_EXP/inference_predictions.csv"
-ML_CSV="$SKLEARN_DIR/$ML_METHOD/test_predictions.csv"
+for required in "$NN_CSV" "$ML_CSV" "$SOAP_EMBEDDINGS"; do
+  if [ ! -f "$required" ]; then
+    echo "ERROR: required input not found: $required" >&2
+    exit 2
+  fi
+done
 
-# Embeddings for diversity computation
-PMT_EMBEDDINGS="$DISCOVERY_DATA/embedding_analysis/unlabeled_embeddings.npz"
-SOAP_EMBEDDINGS=""  # Set to path of soap_descriptors.npz if available
-
-# Optional: path to a previous nomination for comparison
-OLD_NOMINEES=""  # e.g., "$DISCOVERY_DATA/previous_nomination/FINAL_TOP25_diverse.txt"
-
-# Nomination parameters
-POOL_SIZE=500
-N_CLUSTERS=20
-MAX_PER_CLUSTER=1
-MMR_LAMBDAS="0.2 0.3 0.4"
-BUDGET=25
-EXPLORATION_BUDGET=5
-EXPLORATION_POOL_HI=2000
-RRF_K=60
-SEED=42
-
-# Shared arguments
-COMMON_ARGS=(
-  --prediction_csvs
-      "${NN_EXP}=${NN_CSV}"
-      "${ML_METHOD}=${ML_CSV}"
-  --nn_models "$NN_EXP"
-  --ml_models "$ML_METHOD"
-  --pool_size "$POOL_SIZE"
-  --n_clusters "$N_CLUSTERS"
-  --max_per_cluster "$MAX_PER_CLUSTER"
-  --mmr_lambdas $MMR_LAMBDAS
-  --budget "$BUDGET"
-  --exploration_budget "$EXPLORATION_BUDGET"
-  --exploration_pool_hi "$EXPLORATION_POOL_HI"
-  --rrf_k "$RRF_K"
-  --seed "$SEED"
-)
-
-# Add old nominees if specified
-if [ -n "$OLD_NOMINEES" ] && [ -f "$OLD_NOMINEES" ]; then
-  COMMON_ARGS+=(--old_nominees "$OLD_NOMINEES")
-fi
-
-# =============================================================================
-# RUN 1: PMTransformer diversity
-# =============================================================================
-section "RUN 1: PMTransformer diversity"
-
-SOAP_ARG=""
-if [ -n "$SOAP_EMBEDDINGS" ] && [ -f "$SOAP_EMBEDDINGS" ]; then
-  SOAP_ARG="--soap_embeddings_path $SOAP_EMBEDDINGS"
-fi
-
+# Exact paper settings. Hidden implementation constants are also exposed here:
+# PCA=50, KMeans n_init=10, exploration score weights 0.60/0.40, and
+# exploration MMR lambda=0.40.
 python discovery/nominate_diverse_dft.py \
-  --embeddings_path "$PMT_EMBEDDINGS" \
-  --embedding_key embeddings \
-  --embedding_label PMTransformer \
-  $SOAP_ARG \
-  --output_dir "$DISCOVERY_DATA/nomination-PMT" \
-  "${COMMON_ARGS[@]}"
+  --embeddings_path "$SOAP_EMBEDDINGS" \
+  --embedding_key "$SOAP_KEY" \
+  --embedding_label SOAP \
+  --prediction_csvs \
+    "$NN_EXP=$NN_CSV" \
+    "$ML_METHOD=$ML_CSV" \
+  --nn_models "$NN_EXP" \
+  --ml_models "$ML_METHOD" \
+  --output_dir "$OUTPUT_DIR" \
+  --pool_size 500 \
+  --pca_components 50 \
+  --n_clusters 20 \
+  --kmeans_n_init 10 \
+  --max_per_cluster 1 \
+  --mmr_lambdas 0.2 0.3 0.4 \
+  --alpha 0.50 \
+  --beta 0.30 \
+  --gamma 0.20 \
+  --budget 25 \
+  --exploration_budget 5 \
+  --exploration_pool_lo 500 \
+  --exploration_pool_hi 2000 \
+  --exploration_disagreement_weight 0.60 \
+  --exploration_rank_std_weight 0.40 \
+  --exploration_mmr_lambda 0.40 \
+  --rrf_k 60 \
+  --seed 42
 
-# =============================================================================
-# RUN 2: SOAP diversity (if SOAP embeddings available)
-# =============================================================================
-if [ -n "$SOAP_EMBEDDINGS" ] && [ -f "$SOAP_EMBEDDINGS" ]; then
-  section "RUN 2: SOAP diversity"
-
-  python discovery/nominate_diverse_dft.py \
-    --embeddings_path "$SOAP_EMBEDDINGS" \
-    --embedding_key soap_descriptors \
-    --embedding_label SOAP \
-    --output_dir "$DISCOVERY_DATA/nomination-SOAP" \
-    "${COMMON_ARGS[@]}"
-else
-  echo ""
-  echo "  Skipping SOAP run (no SOAP embeddings found at: $SOAP_EMBEDDINGS)"
-  echo "  To enable: set SOAP_EMBEDDINGS at the top of this script."
-fi
-
-# =============================================================================
 section "STEP 7 COMPLETE"
-echo ""
-echo "  PMTransformer nomination: $DISCOVERY_DATA/nomination-PMT/"
-if [ -n "$SOAP_EMBEDDINGS" ] && [ -f "$SOAP_EMBEDDINGS" ]; then
-  echo "  SOAP nomination:          $DISCOVERY_DATA/nomination-SOAP/"
-fi
-echo ""
-echo "  Compare the two to see how SOAP diversity improves structural spread."
+echo "SOAP-only nomination: $OUTPUT_DIR/FINAL_TOP25_diverse.txt"

@@ -12,8 +12,7 @@ reticular construction); the scoring models are trained in the screening module:
 > | [`screening/`](../screening/) | Trains the PMTransformer regressor + ExtraTrees classifier and screens *known* structures |
 > | **`generation/`** *(this module)* | **Generates** new candidates, screens them with the trained models, and runs the **DFT** validation |
 >
-> Paper: *Enrichment-driven discovery of low-band-gap metal–organic frameworks with pretrained
-> porous-material representations* (see [Citation](#citation)). Author: Ege Yiğit Erbil, Koç University.
+> Paper: *Enrichment-driven discovery of low-band-gap metal–organic frameworks* (see [Citation](#citation)). Code author: Ege Yiğit Erbil, Koç University.
 
 ---
 
@@ -35,7 +34,8 @@ funnels them down to a handful worth the cost of DFT. Concretely, it
 3. **scores and ranks** every generated structure with the trained models from
    the [screening module](../screening/) (fine-tuned PMTransformer regressor +
    ExtraTrees classifier, fused by reciprocal-rank fusion),
-4. **nominates a small, chemically diverse subset** for validation, and
+4. **nominates a small, chemically diverse subset** using SOAP as the sole structural-diversity
+   coordinate for this generated pool (RRF and disagreement affect priority, not geometry), and
 5. **runs the full DFT cascade** (PBE-D3(BJ) → HSE06) and analyses the electronic structure of the
    confirmed hits.
 
@@ -49,26 +49,16 @@ flowchart LR
     C --> D["Screen & rank<br/>PMTransformer + ExtraTrees + RRF<br/>(models from the screening module)"]
     D --> E["Diversity-aware nomination<br/>SOAP clustering + MMR"]
     E --> F["DFT validation<br/>PBE-D3(BJ) → HSE06 cascade"]
-    F --> G(["5 novel low-band-gap MOFs<br/>confirmed at HSE06"])
+    F --> G(["6 low-band-gap generated MOFs<br/>confirmed at HSE06"])
 ```
 
 ## Results at a glance
 
-Applied to **13,802** generated frameworks, the workflow nominated **25** candidates for
-hybrid-functional DFT. Five did not converge within the protocol's iteration limits and were set
-aside; the remaining **20** completed the full PBE-D3(BJ) → HSE06 cascade, and **5** were confirmed
-with HSE06 band gaps at or below 1 eV — a **25% hit rate** among completed validations (20% if all
-selected candidates are counted), versus the sub-1% prevalence in labelled QMOF. **None** of the five matches any structure
-(or even a reduced composition) in **QMOF**, **CoRE MOF 2019**, **hMOF**, or **ToBaCCo**, so all
-five are novel against the databases searched.
-
-| Label | Net | Node | Linker (neutral acid) | HSE06 $E_\mathrm{g}$ (eV) | In databases? |
-|-------|-----|------|------------------------|:---:|:---:|
-| `hex+N199+E185` | hex | Cu₄ (8-c) | C₈H₂Br₄O₄ | 0.25 | no |
-| `pcu+N273+E44`  | pcu | Mn₃ (6-c) | C₄H₂O₄ | 0.54 | no |
-| `hex+N67+E151`  | hex | Cd₃ (8-c) | C₈H₁₂O₄ | 0.56 | no |
-| `pcu+N273+E128` | pcu | Mn₃ (6-c) | C₈H₇NO₄ | 0.81 | no |
-| `cds+N29+E128`  | cds | Mn₂ (4-c) | C₈H₇NO₄ | 0.83 | no |
+Applied to **13,802** generated frameworks, the workflow nominated **25** candidates. Two
+lanthanide-containing nominees were excluded before submission, so **23** entered the DFT
+workflow; **16** yielded reportable HSE06 results and **6** had band gaps at or below 1 eV. Across
+both paper arms, 48 structures were submitted, 41 yielded reportable HSE06 results, and 9 were
+confirmed as low-gap (3 QMOF-pool + 6 generated).
 
 Each hit is a force-converged PBE-D3(BJ) local minimum (a metastable structure, not a generator
 artefact); thermodynamic stability and experimental synthesizability are beyond this computational
@@ -85,24 +75,26 @@ screen.
 | *Electronic-structure analysis* (projected DOS) | `DOS_analysis/` |
 | *Building-block and linker identification* | [`scripts/resolve_linker_smiles.py`](scripts/resolve_linker_smiles.py) — Open Babel SMILES/InChI/InChIKey from the PORMAKE building-block bond graphs |
 | *Stability and novelty assessment* | [`scripts/novelty/novelty_check_multidb.py`](scripts/novelty/novelty_check_multidb.py) — `pymatgen` `StructureMatcher` vs QMOF, CoRE MOF 2019, hMOF, ToBaCCo |
-| Main-text hit tables + the five confirmed-hit CIFs | results archive — see the paper's Data availability |
+| *Structural relaxation and novelty assessment* (chemical-identity screen) | [`scripts/novelty/chemical_identity_novelty.py`](scripts/novelty/chemical_identity_novelty.py) — net topology + node metal + neutral-parent linker, from MOFid/MOFkey annotations of QMOF, hMOF, ToBaCCo and CoRE MOF 2024 ASR. Complements the StructureMatcher screen above: that one asks whether a hit is the *same material* as a reference, this one whether the *combination of building blocks* is known. Run with `--validate` first — the positive controls establish that a null result means absence rather than insensitivity |
+| Main-text and supplementary analyses | code to recompute tables and figures for a run; stale result tables are not distributed, and newly trained models need not reproduce paper ranks numerically |
 
-## What's already included (you don't rebuild the QMOF generation space)
+## Inputs, committed libraries, and the exact paper-pool identity
 
 The QMOF-informed assembly space is **committed to this repository**, so you can start generating
-immediately without re-mining QMOF:
+immediately without re-mining QMOF. The public QMOF release table is downloaded separately only
+when rebuilding or changing those libraries:
 
-| Provided | Contents |
+| Input or resource | Contents |
 |----------|----------|
-| `qmof.csv` | The QMOF release table — source of the topology / metal / linker distributions. |
+| `qmof.csv` (download separately) | Public QMOF release table used to re-mine topology, metal, and linker distributions; not committed or included in Globus. |
 | `qmof_bb_dir/` | The building-block library: **506 metal-node SBUs** (`N*.xyz`) and **229 organic edges/linkers** (`E*.xyz`, including augmented `E9xxx` linkers). |
 | `qmof_topo_dir/` | **42 net topologies** (`.cgd`: `pcu`, `hex`, `cds`, `dia`, `fcu`, `sod`, `nbo`, `acs`, …). |
 | `qmof_analysis/` | The QMOF-derived whitelists (`selected_{topologies,metals,linkers}.txt`), frequency counts, and `coverage_report.md`. |
 
-The **only** generation input you must create yourself is the RMSD node↔topology compatibility table
+When using the committed libraries, the generation input you must create is the RMSD node↔topology compatibility table
 **`data/rmsd_qmof.pickle`** (not committed — it is large and fully derived). Build it once with
 `build_rmsd_table.sh` before Step 2. Rebuilding the libraries above (Step 1) is **optional** — do it only if
-you want to change the QMOF coverage thresholds.
+you want to change the QMOF coverage thresholds, in which case download `qmof.csv` first.
 
 ## Reproducing the paper
 
@@ -112,11 +104,12 @@ A full reproduction uses **both modules of this repository**. Train the models i
 1. **Install** this module's `requirements.txt`. Set `TRAIN_ROOT` to the `screening/` module
    directory (it holds `train_regressor.py` and the trained `experiments/`).
 2. **Steps 1–12** — follow [REPLICATION.md](REPLICATION.md): (optionally) rebuild the
-   QMOF-aligned libraries, generate the candidate database (≈13,802 structures), preprocess it,
-   screen it with the trained models, and nominate the **25** diversity-aware DFT candidates.
+   QMOF-aligned libraries; either generate a new stochastic candidate database or materialize the
+   exact 13,802 paper-pool ID manifest from the released SOAP archive; then preprocess, screen, and
+   nominate candidates for the current run.
 3. **Steps 13–26** — follow [DFT_WORKFLOW.md](DFT_WORKFLOW.md): the four-stage PBE-D3(BJ) →
-   HSE06 cascade (20 of the 25 complete within the protocol's iteration limits) → the
-   **5 confirmed low-band-gap hits**.
+   HSE06 cascade for the **23 submitted** generated candidates → **16 reportable results** and
+   **6 confirmed low-band-gap hits**.
 
 ## Beyond low-band-gap MOFs
 
@@ -222,29 +215,55 @@ This repository contains the **code and workflow only** — no result files. The
 versions used for the paper are frozen in [`env/`](env/) (`requirements_finetuning.txt` and
 `requirements_analysis.txt`); the top-level `requirements.txt` remains the permissive
 quick-install list; the exact package versions used for the paper are frozen at the repository
-root in [`../env/`](../env/). The paper's exact train/val/test split JSONs are committed in the
+root in [`../env/`](../env/). The paper's exact train/validation/test partition JSONs are committed in the
 screening module, [`../screening/data/splits/`](../screening/data/splits/strategy_d_farthest_point/).
 
-All result artifacts — the five HSE06-confirmed hit CIFs, curated hit tables, full ranked
-screening tables, embedding archives, and the complete DFT inputs and outputs for every
-completed validation — are distributed separately (see the paper's Data availability).
+Derived CSVs, ranked lists, curated result tables, plots, trained checkpoints, and legacy
+nomination folders are not distributed. The code recomputes them for a fresh run from the public
+QMOF source and released large inputs. Because trained checkpoints and prediction CSVs are not
+distributed and training is stochastic, a rerun need not reproduce paper scores or ranks
+numerically.
 
 ## Large files via Globus (and the `PhaseN` names)
 
-The embedding/descriptor archives and all raw DFT calculation files are **not stored in this
-repository** — they are shared via Globus (see the paper's Data availability). After downloading,
-restore each archive to the path below; a `README.md` placeholder marks each location.
+Globus contains **only** the frozen pretrained PMTransformer/SOAP archives, the PORMAKE structure
+files of the generated pool, and DFT calculation directories (25 QMOF-pool + 23 generated
+submissions, including available files for incomplete runs and excluding VASP-licensed `POTCAR`
+files). After downloading, restore each archive to the path below; a `README.md` placeholder marks
+each location.
 
-| Globus file | Restore to | Meaning |
+| Globus path | Restore to | Meaning |
 |------|------|---------|
-| `pmt_embeddings_qmof_labeled.npz` | `embeddings/` | PMTransformer embeddings of the **labelled** QMOF set |
-| `pmt_embeddings_qmof_unlabeled.npz` | `embeddings/` | PMTransformer embeddings of the **unlabelled** QMOF screening pool |
-| `pmt_embeddings_qmof_all.npz` | `embeddings/` | Labelled + unlabelled QMOF embedded in **one** aligned forward pass (reference cache) |
-| `soap_descriptors_sparse.npz` | `soap_analysis/` | Cached SOAP descriptors (96 MB — too close to GitHub's 100 MB hard limit) |
-| DFT stage folders (per validated MOF) | your `DFT_WORK_ROOT` | Complete PBED3-PreRelax / PBED3-Relax / PBED3-Single / HSE-single inputs and outputs |
+| `embeddings/qmof_labeled_pmtransformer_embeddings.npz` | `../screening/data/embeddings/embeddings_pretrained.npz` (optionally also `embeddings/`) | PMTransformer embeddings of the **labelled** QMOF set and authoritative paper-split labels |
+| `embeddings/qmof_pmtransformer_embeddings.npz` | `embeddings/pmt_embeddings_qmof_all.npz` | Authoritative aligned QMOF cache: 20,371 rows = 10,810 labeled + 9,561 unlabeled |
+| `embeddings/generated_pmtransformer_embeddings.npz` | `embeddings/generated_pmt_embeddings.npz` | PMTransformer embeddings of all 13,802 generated structures |
+| `soap_descriptors/qmof_soap_descriptors.npz` | `soap_analysis/soap_descriptors_sparse.npz` | QMOF SOAP: 20,370 rows; `core_ERIWAF_freeONLY` is absent |
+| `soap_descriptors/generated_soap_descriptors.npz` | `soap_analysis/generated_vs_qmof/` | SOAP descriptors for all 13,802 generated structures |
+| `generated_structures/` | `data/generated_structures/` | One PORMAKE CIF per generated-pool member; exactly the 13,802 paper-pool identifiers |
+| `dft_validation/` (per submitted MOF) | your `DFT_WORK_ROOT` | Available PBED3-PreRelax / PBED3-Relax / PBED3-Single / HSE-single inputs and outputs for 25 + 23 submissions |
+
+The Globus filenames are descriptive; the *Restore to* column gives the path and filename each
+archive must take inside this repository.
+
+The generated SOAP archive is also the authoritative identity record for the paper pool. Materialize
+its descriptor-row-aligned, newline-delimited manifest without a separately distributed CSV:
+
+```bash
+python scripts/materialize_generated_pool_manifest.py \
+  --descriptor-npz soap_analysis/generated_vs_qmof/generated_soap_descriptors.npz \
+  --output data/paper_generated_pool_manifest.txt
+```
+
+The utility rejects missing/duplicate IDs and any default count other than 13,802, and prints a
+SHA-256 checksum of the resulting manifest.
 
 (Historical provenance strings may refer to the embedding archives by their original working
 names `Phase5_embeddings.npz`, `Phase6_embeddings.npz`, and `all_embeddings.npz`.)
+
+For the complete QMOF unlabeled pool, select the 9,561 unlabeled IDs from
+`pmt_embeddings_qmof_all.npz`. The historical 9,527-row standalone archive is retained only under
+the umbrella workspace's local non-release `RESULTS/local_only_archive/` folder and is not part of
+Globus.
 
 ---
 
@@ -280,19 +299,17 @@ benchmarked in the [`screening/`](../screening/) module — diversity-aware ense
 
 If you use this software, please cite the accompanying paper:
 
-> Erbil, E. Y. *et al.* Enrichment-driven discovery of low-band-gap metal–organic frameworks with
-> pretrained porous-material representations. *Manuscript in preparation* (2026).
+> Erbil, E. Y., Çağatan, Ö. V. & Dereli, B. Enrichment-driven discovery of low-band-gap metal–organic frameworks. *Manuscript in preparation* (2026).
 
 ```bibtex
 @article{erbil2026lowgapmof,
-  title   = {Enrichment-driven discovery of low-band-gap metal--organic frameworks
-             with pretrained porous-material representations},
-  author  = {Erbil, Ege Yi{\u{g}}it and others},
+  title   = {Enrichment-driven discovery of low-band-gap metal--organic frameworks},
+  author  = {Erbil, Ege Yi{\u{g}}it and \c{C}a\u{g}atan, {\"O}mer Veysel and Dereli, B{\"u}\c{s}ra},
   year    = {2026},
   note    = {Manuscript in preparation}
 }
 ```
-<!-- TODO: update author list, journal/DOI, and year once the paper is published. -->
+<!-- TODO: update journal, volume and DOI once the paper is published. -->
 
 To cite this software repository specifically, see the [repository-level README](../README.md).
 

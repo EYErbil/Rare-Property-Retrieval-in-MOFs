@@ -33,7 +33,7 @@ Two strategies:
     - Proportionally distribute remaining cluster members to val/test
     - Result: no structural family is entirely missing from training
 
-Both strategies keep the test SET SIZE similar to original (9 positives)
+Both strategies keep the test-partition size similar to the original (9 positives)
 and only redistribute train+val positives to maximize coverage.
 
 IMPORTANT: Negatives are numerous (~10K) and split randomly. Only the
@@ -63,16 +63,16 @@ from collections import defaultdict, Counter
 # =============================================================================
 
 def bandgap_to_binary(bandgap, threshold=1.0):
-    return 1 if bandgap < threshold else 0
+    return 1 if bandgap <= threshold else 0
 
 def bandgap_to_ordinal(bandgap, bin_width=0.5, max_class=13):
-    if bandgap < 1.0:
+    if bandgap <= 1.0:
         return 0
     bin_idx = int((bandgap - 1.0) / bin_width) + 1
     return min(bin_idx, max_class)
 
 def bandgap_to_multiclass(bandgap, bin_width=0.5, max_class=14):
-    if bandgap < 1.0:
+    if bandgap <= 1.0:
         return 0
     if bandgap > 7.5:
         return max_class
@@ -83,7 +83,7 @@ def compute_sample_weights(bandgaps, threshold=1.0):
     bgs = list(bandgaps.values())
     cids = list(bandgaps.keys())
     n_total = len(bgs)
-    n_pos = sum(1 for bg in bgs if bg < threshold)
+    n_pos = sum(1 for bg in bgs if bg <= threshold)
     n_neg = n_total - n_pos
     if n_pos == 0:
         return {cid: 1.0 for cid in cids}
@@ -91,7 +91,7 @@ def compute_sample_weights(bandgaps, threshold=1.0):
     weights = {}
     for cid in cids:
         bg = bandgaps[cid]
-        if bg < threshold:
+        if bg <= threshold:
             bg_factor = 1.0 + 0.3 * (1.0 - bg / threshold)
             weights[cid] = base_pos_weight * bg_factor
         else:
@@ -112,8 +112,8 @@ def generate_all_labels(split_bandgaps, split_name, output_dir):
         save_json(weights, os.path.join(output_dir, f'{split_name}_bandgaps_regression_weights.json'))
     return {
         'n_total': len(split_bandgaps),
-        'n_pos': sum(1 for bg in split_bandgaps.values() if bg < 1.0),
-        'n_neg': sum(1 for bg in split_bandgaps.values() if bg >= 1.0),
+        'n_pos': sum(1 for bg in split_bandgaps.values() if bg <= 1.0),
+        'n_neg': sum(1 for bg in split_bandgaps.values() if bg > 1.0),
     }
 
 def save_json(data, path):
@@ -139,7 +139,7 @@ def load_all_bandgaps(splits_dir):
         for cid, bg in data.items():
             all_bandgaps[cid] = float(bg)
             split_assignment[cid] = split_name
-        n_pos = sum(1 for bg in data.values() if float(bg) < 1.0)
+        n_pos = sum(1 for bg in data.values() if float(bg) <= 1.0)
         print(f"  Loaded {split_name}: {len(data)} total, {n_pos} positives")
     return all_bandgaps, split_assignment
 
@@ -193,10 +193,10 @@ def strategy_d_farthest_point(all_bandgaps, split_assignment, emb_cid_to_vec,
     threshold = 1.0
 
     # Separate positives and negatives
-    all_pos = {c: bg for c, bg in all_bandgaps.items() if bg < threshold}
-    all_neg = {c: bg for c, bg in all_bandgaps.items() if bg >= threshold}
+    all_pos = {c: bg for c, bg in all_bandgaps.items() if bg <= threshold}
+    all_neg = {c: bg for c, bg in all_bandgaps.items() if bg > threshold}
     test_neg_orig = [c for c, s in split_assignment.items()
-                     if s == 'test' and all_bandgaps[c] >= threshold]
+                     if s == 'test' and all_bandgaps[c] > threshold]
 
     print(f"\n  Total positives: {len(all_pos)}")
     print(f"  Total negatives: {len(all_neg)}")
@@ -339,7 +339,7 @@ def strategy_d_farthest_point(all_bandgaps, split_assignment, emb_cid_to_vec,
 
     # Print summary
     for s_name, s_data in splits.items():
-        n_p = sum(1 for bg in s_data.values() if bg < threshold)
+        n_p = sum(1 for bg in s_data.values() if bg <= threshold)
         n_n = len(s_data) - n_p
         print(f"\n  {s_name}: {len(s_data)} total ({n_p} pos, {n_n} neg)")
 
@@ -380,10 +380,10 @@ def strategy_e_cluster_balanced(all_bandgaps, split_assignment, emb_cid_to_vec,
     rng = np.random.default_rng(seed)
     threshold = 1.0
 
-    all_pos = {c: bg for c, bg in all_bandgaps.items() if bg < threshold}
-    all_neg = {c: bg for c, bg in all_bandgaps.items() if bg >= threshold}
+    all_pos = {c: bg for c, bg in all_bandgaps.items() if bg <= threshold}
+    all_neg = {c: bg for c, bg in all_bandgaps.items() if bg > threshold}
     test_neg_orig = [c for c, s in split_assignment.items()
-                     if s == 'test' and all_bandgaps[c] >= threshold]
+                     if s == 'test' and all_bandgaps[c] > threshold]
 
     # Get embeddings
     pos_cids = sorted(all_pos.keys())
@@ -504,7 +504,7 @@ def strategy_e_cluster_balanced(all_bandgaps, split_assignment, emb_cid_to_vec,
     }
 
     for s_name, s_data in splits.items():
-        n_p = sum(1 for bg in s_data.values() if bg < threshold)
+        n_p = sum(1 for bg in s_data.values() if bg <= threshold)
         n_n = len(s_data) - n_p
         print(f"\n  {s_name}: {len(s_data)} total ({n_p} pos, {n_n} neg)")
 
@@ -549,10 +549,10 @@ def strategy_f_coverage_merged(all_bandgaps, split_assignment, emb_cid_to_vec,
     rng = np.random.default_rng(seed)
     threshold = 1.0
 
-    all_pos = {c: bg for c, bg in all_bandgaps.items() if bg < threshold}
-    all_neg = {c: bg for c, bg in all_bandgaps.items() if bg >= threshold}
+    all_pos = {c: bg for c, bg in all_bandgaps.items() if bg <= threshold}
+    all_neg = {c: bg for c, bg in all_bandgaps.items() if bg > threshold}
     test_neg_orig = [c for c, s in split_assignment.items()
-                     if s == 'test' and all_bandgaps[c] >= threshold]
+                     if s == 'test' and all_bandgaps[c] > threshold]
 
     pos_cids = sorted(all_pos.keys())
     pos_embs = np.array([emb_cid_to_vec[c] for c in pos_cids if c in emb_cid_to_vec])
@@ -622,7 +622,7 @@ def strategy_f_coverage_merged(all_bandgaps, split_assignment, emb_cid_to_vec,
     }
 
     for s_name, s_data in splits.items():
-        n_p = sum(1 for bg in s_data.values() if bg < threshold)
+        n_p = sum(1 for bg in s_data.values() if bg <= threshold)
         n_n = len(s_data) - n_p
         print(f"\n  {s_name}: {len(s_data)} total ({n_p} pos, {n_n} neg)")
 
@@ -652,7 +652,7 @@ def compare_coverage(all_bandgaps, split_assignment, emb_cid_to_vec, threshold=1
     print("  ORIGINAL SPLIT COVERAGE (for comparison)")
     print(f"{'='*70}")
 
-    pos_cids = sorted(c for c, bg in all_bandgaps.items() if bg < threshold)
+    pos_cids = sorted(c for c, bg in all_bandgaps.items() if bg <= threshold)
     pos_embs = np.array([emb_cid_to_vec[c] for c in pos_cids if c in emb_cid_to_vec])
     pos_cids = [c for c in pos_cids if c in emb_cid_to_vec]
 
@@ -768,7 +768,7 @@ def main():
                         help='Which strategy: D=farthest-point, E=cluster-balanced, '
                              'F=coverage-merged, all=all three')
     parser.add_argument('--n_test_pos', type=int, default=9,
-                        help='Number of positives in test set')
+                        help='Number of positives in the test partition')
     parser.add_argument('--n_val_pos', type=int, default=7,
                         help='Number of positives in val set (strategy D/E)')
     parser.add_argument('--min_sim', type=float, default=0.55,

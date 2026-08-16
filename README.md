@@ -5,9 +5,19 @@ properties under a fixed budget of expensive validations** — demonstrated by r
 low-band-gap metal–organic frameworks (HSE06 $E_\mathrm{g} \le 1$ eV, under 1% of labelled
 data) and confirming them with hybrid-functional DFT.
 
-Accompanies the paper *Enrichment-driven discovery of low-band-gap metal–organic frameworks
-with pretrained porous-material representations* (see [Citation](#citation)).
-Author: Ege Yiğit Erbil, Koç University.
+Accompanies the paper *Enrichment-driven discovery of low-band-gap metal–organic frameworks*
+by Ege Yiğit Erbil, Ömer Veysel Çağatan and Büşra Dereli (see [Citation](#citation)).
+Code author: Ege Yiğit Erbil, Koç University.
+
+![Enrichment-driven discovery workflow for low-band-gap MOFs](docs/workflow.png)
+
+<sub>Only 74 of the 10,810 HSE06-labelled QMOF structures have $E_\mathrm{g} \le 1$ eV (purple). A
+fine-tuned PMTransformer regressor and an ExtraTrees classifier trained on frozen embeddings
+independently rank 23,363 prospective candidates, and their rankings are combined by
+reciprocal-rank fusion (RRF). Diversity- and disagreement-aware nomination selects 25 candidates
+from each prospective pool for HSE06 validation. Of the 50 nominated candidates, 41 complete
+HSE06 validation and nine satisfy $E_\mathrm{g} \le 1$ eV: three QMOF structures and six generated
+frameworks. (Figure 1 of the paper; vector version in [`docs/workflow.pdf`](docs/workflow.pdf).)</sub>
 
 ## The idea
 
@@ -16,18 +26,21 @@ predicting every value accurately — it is concentrating the few true positives
 short validation queue. This workflow combines a fine-tuned property regressor with a
 rare-class classifier trained on frozen pretrained embeddings, fuses their rankings by
 reciprocal-rank fusion, probes model disagreement as an explicit exploration signal, and
-selects a chemically diverse shortlist for first-principles validation.
+selects a chemically diverse shortlist for first-principles validation. Diversity is measured in a
+representation space that is separate from the ranking: the generated-pool nomination applies the
+procedure once in SOAP space, while the second-phase QMOF acquisition runs it separately in
+PMTransformer-embedding and SOAP spaces. RRF and disagreement determine priority, not geometry.
 
 Demonstrated outcome (paper): **122× enrichment** over random selection at a 25-structure
-budget on a held-out partition; **40** HSE06 validations drawn from **23,363** ranked
-candidates confirmed **8** low-band-gap MOFs — 3 from the unlabelled QMOF pool and 5 newly
-generated frameworks absent from four major MOF databases.
+budget in a retrospective comparison on the labeled test partition; **48** structures were
+submitted to the DFT workflow, **41** yielded reportable HSE06 results, and **9** low-band-gap
+MOFs were confirmed — 3 from the unlabelled QMOF pool and 6 from the generated pool.
 
 ```mermaid
 flowchart LR
     L[("Labelled data<br/>(rare positives)")] --> S["screening/<br/>regressor + rare-class classifier<br/>reciprocal-rank fusion"]
     G["generation/<br/>PORMAKE assembly from<br/>reference-informed building blocks"] --> S
-    S --> N["Diversity-aware nomination<br/>(25 candidates per pool)"]
+    S --> N["SOAP diversity-aware nomination<br/>(25 candidates per pool)"]
     N --> V["Staged DFT validation<br/>PBE-D3(BJ) → HSE06"]
     V --> H(["Confirmed rare-property hits"])
 ```
@@ -45,12 +58,18 @@ flowchart LR
 Every procedure described in the paper's Methods maps to a documented, runnable step:
 
 1. **Screening arm** — [`screening/`](screening/README.md#reproducing-the-paper), Steps 0–7:
-   preprocess the labelled set, train the models on the committed exact split, reproduce the
-   held-out enrichment numbers, and nominate 25 diverse candidates from the unlabelled pool.
+   preprocess the labelled set, train models on the committed exact split, repeat the
+   retrospective test-partition analysis, and nominate candidates from the unlabelled pool.
 2. **Generation arm** — [`generation/`](generation/README.md#reproducing-the-paper),
    Steps 1–26: assemble the candidate database from the committed building-block libraries,
    screen it with the models trained in step 1, nominate 25 diverse candidates, and run the
    PBE-D3(BJ) → HSE06 cascade.
+
+A fresh training run is a computational replication, not a bitwise reconstruction of the paper
+rankings: trained checkpoints and prediction CSVs are not distributed, and stochastic training can
+change numerical scores and ranks. Likewise, random PORMAKE sampling constructs a new generated
+pool. The exact 13,802 paper-pool identities can instead be materialized from the released SOAP
+descriptor archive with `generation/scripts/materialize_generated_pool_manifest.py`.
 
 ## Applying it to your own rare property
 
@@ -63,11 +82,21 @@ and [generation/README.md → *Beyond low-band-gap MOFs*](generation/README.md#b
 
 ## Code, not results
 
-This repository contains **code and workflow only**. The exact train/val/test membership
-lists and pinned environments are committed (they are required inputs for reproduction); all
-result artifacts — ranked screening tables, curated hit tables, confirmed-hit structures,
-embedding archives, and the complete DFT inputs and outputs for every completed validation —
-are distributed separately (see the paper's Data availability statement).
+This repository contains **code and workflow only**. The exact train/validation/test partition membership
+lists and pinned environments are committed (they are required inputs for reproduction). Derived
+CSV files, ranked tables, curated result tables, plots, trained checkpoints, and legacy nomination
+archives are not distributed. The code recomputes these artifacts for a fresh run, but without the
+paper checkpoints and prediction CSVs it does not promise numerically identical scores or ranks.
+Globus contains
+only the SOAP and frozen pretrained PMTransformer embedding archives, the PORMAKE structure files
+of the 13,802-member generated pool, and the DFT calculation directories for the 25 QMOF-pool and
+23 generated submissions (without licensed `POTCAR` files).
+
+The labeled split was designed **before any task-specific training** from distances in the frozen
+pretrained PMTransformer embedding space, whose fixed local-and-global geometry distributes the
+rare positive chemistries without label-trained leakage. The test partition was excluded from
+model fitting, but it was used retrospectively to compare model and fusion choices and is therefore
+not described as an untouched external benchmark.
 
 ## Built on
 
@@ -81,14 +110,13 @@ structure assembly), [MOFTransformer / PMTransformer](https://github.com/hspark1
 
 ## Citation
 
-> Erbil, E. Y. *et al.* Enrichment-driven discovery of low-band-gap metal–organic frameworks
-> with pretrained porous-material representations. *Manuscript in preparation* (2026).
+> Erbil, E. Y., Çağatan, Ö. V. & Dereli, B. Enrichment-driven discovery of low-band-gap
+> metal–organic frameworks. *Manuscript in preparation* (2026).
 
 ```bibtex
 @article{erbil2026lowgapmof,
-  title   = {Enrichment-driven discovery of low-band-gap metal--organic frameworks
-             with pretrained porous-material representations},
-  author  = {Erbil, Ege Yi{\u{g}}it and others},
+  title   = {Enrichment-driven discovery of low-band-gap metal--organic frameworks},
+  author  = {Erbil, Ege Yi{\u{g}}it and \c{C}a\u{g}atan, {\"O}mer Veysel and Dereli, B{\"u}\c{s}ra},
   year    = {2026},
   note    = {Manuscript in preparation}
 }
@@ -98,10 +126,10 @@ structure assembly), [MOFTransformer / PMTransformer](https://github.com/hspark1
   author = {Erbil, Ege Yi{\u{g}}it},
   year   = {2026},
   note   = {Ko\c{c} University},
-  url    = {https://github.com/EYErbil/rare-property-retrieval}
+  url    = {https://github.com/EYErbil/Rare-Property-Retrieval-in-MOFs}
 }
 ```
-<!-- TODO: update author list, journal/DOI, and year once the paper is published. -->
+<!-- TODO: update journal, volume and DOI once the paper is published. -->
 
 ## License
 

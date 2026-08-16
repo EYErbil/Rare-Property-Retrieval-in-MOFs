@@ -95,6 +95,7 @@ def main():
         print(f"\nCreated {total_fixed} symlinks.")
     if total_missing:
         print(f"WARNING: {total_missing} file(s) had no source in {source_dir}. Fix or exclude those CIFs.")
+        raise SystemExit(1)
     else:
         print("All CIFs in split JSONs have corresponding files (or were fixed).")
 

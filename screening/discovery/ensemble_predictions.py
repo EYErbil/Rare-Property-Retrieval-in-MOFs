@@ -68,9 +68,9 @@ def load_predictions_from_csv(csv_path, normalize_lower_is_better=True):
 
 
 def find_predictions_csv(path):
-    """Return path to test_predictions.csv or inference_predictions.csv under path."""
+    """Return prospective inference predictions when both CSV types exist."""
     path = os.path.normpath(path)
-    for name in ["test_predictions.csv", "inference_predictions.csv"]:
+    for name in ["inference_predictions.csv", "test_predictions.csv"]:
         p = os.path.join(path, name)
         if os.path.isfile(p):
             return p

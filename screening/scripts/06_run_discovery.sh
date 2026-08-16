@@ -44,12 +44,12 @@ mkdir -p logs "$DISCOVERY_DATA/inference_results" "$DISCOVERY_DATA/ensemble_repo
 TOP_K=25
 
 # NN experiments to use for inference (must have best_es-*.ckpt)
-NN_EXPERIMENTS="exp364_fulltune exp370_seed2 exp371_seed3"
+NN_EXPERIMENTS="exp364_fulltune"
 
 # ML methods to include (subdirs of embedding_classifiers with model.joblib)
-# Default: the two SMOTE-based classifiers that performed best in ensemble ablation.
+# Paper default: the production SMOTE--ExtraTrees classifier.
 # To include more, add method names separated by spaces (e.g., "smote_extra_trees smote_random_forest extra_trees").
-ML_METHODS="smote_extra_trees smote_random_forest"
+ML_METHODS="smote_extra_trees"
 
 # Include kNN? (1=yes, 0=no). Set to 0 unless kNN predictions exist.
 USE_KNN=0
@@ -71,13 +71,22 @@ echo "  Output: $DISCOVERY_NPZ"
 # =============================================================================
 section "STEP 6b: ML INFERENCE"
 
-python src/predict_with_embedding_classifier.py \
+python discovery/reinfer_ml.py \
     --embeddings_path "$DISCOVERY_NPZ" \
-    --models_dir "$SKLEARN_DIR" \
-    --output_dir "$DISCOVERY_DATA/ml_predictions"
+    --clf_dir "$SKLEARN_DIR" \
+    --output_dir "$DISCOVERY_DATA/ml_predictions" \
+    --methods $ML_METHODS
 
-ML_PRED_COUNT=$(find "$DISCOVERY_DATA/ml_predictions" -name "test_predictions.csv" 2>/dev/null | wc -l)
-echo "  ML methods with predictions: $ML_PRED_COUNT"
+ML_PRED_COUNT=0
+for method_name in $ML_METHODS; do
+    method_csv="$DISCOVERY_DATA/ml_predictions/$method_name/test_predictions.csv"
+    if [ ! -f "$method_csv" ]; then
+        echo "ERROR: required ML prediction file was not produced: $method_csv" >&2
+        exit 2
+    fi
+    ML_PRED_COUNT=$((ML_PRED_COUNT + 1))
+done
+echo "  Required ML methods with predictions: $ML_PRED_COUNT"
 
 # =============================================================================
 # STEP 6c: NN inference (per experiment — run from experiment directory)
@@ -87,13 +96,13 @@ section "STEP 6c: NN INFERENCE"
 for exp_name in $NN_EXPERIMENTS; do
     exp_dir="$EXP_BASE/$exp_name"
     if [ ! -d "$exp_dir" ]; then
-        echo "  WARNING: $exp_dir does not exist. Skipping."
-        continue
+        echo "ERROR: required NN experiment directory does not exist: $exp_dir" >&2
+        exit 2
     fi
     ckpt=$(ls "$exp_dir"/best_es-*.ckpt 2>/dev/null | head -1)
     if [ -z "$ckpt" ]; then
-        echo "  WARNING: No checkpoint in $exp_dir. Skipping."
-        continue
+        echo "ERROR: no checkpoint in required NN experiment: $exp_dir" >&2
+        exit 2
     fi
     echo "  Inferring with $exp_name (checkpoint: $(basename $ckpt))..."
     cd "$exp_dir"
@@ -104,7 +113,8 @@ for exp_name in $NN_EXPERIMENTS; do
     if [ -f "$exp_dir/inference_predictions.csv" ]; then
         echo "  OK: $exp_dir/inference_predictions.csv"
     else
-        echo "  WARNING: inference_predictions.csv not produced for $exp_name"
+        echo "ERROR: inference_predictions.csv not produced for $exp_name" >&2
+        exit 2
     fi
 done
 
@@ -149,9 +159,17 @@ python discovery/ensemble_predictions.py \
 # =============================================================================
 section "STEP 6e: ENSEMBLE REPORT"
 
+REPORT_MODELS=()
+for exp_name in $NN_EXPERIMENTS; do
+    REPORT_MODELS+=("$EXP_BASE/$exp_name")
+done
+for method_name in $ML_METHODS; do
+    REPORT_MODELS+=("$DISCOVERY_DATA/ml_predictions/$method_name")
+done
+
 python discovery/ensemble_report.py \
     --base_dir "$BASE_DIR" \
-    --auto_discover \
+    --models "${REPORT_MODELS[@]}" \
     --include_singles \
     --type_groups \
     --output_dir "$DISCOVERY_DATA/ensemble_report"

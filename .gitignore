@@ -3,11 +3,34 @@
 Thumbs.db
 .vscode/
 .idea/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.venv/
+venv/
 
-# Local staging folders (distributed via the paper's Data availability, never committed)
+# Local staging folders (never committed)
 RESULTS/
 GLOBUS/
 
-# Run logs
+# Large downloaded/recomputed inputs and model artifacts
+*.npz
+*.npy
+*.joblib
+*.pkl
+*.ckpt
+*.pt
+
+# Recomputed outputs
+paper_results/
+re_infer/
+figures_output/
+discovery_data/
+generation/qmof.csv
+generation/qmof_analysis/*.csv
+
+# Run logs and scheduler output
 logs/
 slurm-*.out
+slurm-*.err

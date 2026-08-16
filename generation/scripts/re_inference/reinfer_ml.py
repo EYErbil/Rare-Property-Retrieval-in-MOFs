@@ -4,9 +4,9 @@ Re-infer each saved ML method on a provided embeddings .npz.
 
 Uses the same loading and prediction path as verify_ml_heatmap.py and
 predict_with_embedding_classifier.py: load_embeddings, load_model_artifacts,
-predict_scores. Writes test_predictions.csv (and minimal final_results.json)
-into each method directory under clf_dir so downstream scripts see the new
-inferences.
+predict_scores. Writes only regenerated test_predictions.csv files into each
+method directory under clf_dir so downstream nomination scripts see the new
+inferences. It never fabricates validation metrics.
 
 Usage:
   python reinfer_ml.py \\
@@ -16,7 +16,6 @@ Usage:
 
 import os
 import sys
-import json
 import argparse
 from pathlib import Path
 
@@ -74,9 +73,15 @@ def main():
         default=None,
         help=(
             "Optional output root for re-inference files. "
-            "If set, writes to <output_dir>/<method>/test_predictions.csv "
-            "and final_results.json. If omitted, writes back into each method dir in --clf_dir."
+            "If set, writes to <output_dir>/<method>/test_predictions.csv. "
+            "If omitted, writes back into each method dir in --clf_dir."
         ),
+    )
+    parser.add_argument(
+        "--methods",
+        nargs="+",
+        default=None,
+        help="Optional method names to run (for the paper: smote_extra_trees).",
     )
     args = parser.parse_args()
 
@@ -99,9 +104,20 @@ def main():
     print(f"  {len(cif_ids)} samples, dim {embeddings.shape[1]}")
 
     methods = discover_ml_methods(args.clf_dir)
+    if args.methods:
+        requested = set(args.methods)
+        missing = sorted(requested - set(methods))
+        if missing:
+            raise FileNotFoundError(
+                "Requested classifier artifacts not found under "
+                f"{args.clf_dir}: {', '.join(missing)}"
+            )
+        methods = [name for name in methods if name in requested]
     if not methods:
-        print(f"No ML methods found under {args.clf_dir} (need model.joblib or artifacts.joblib per subdir)")
-        return
+        raise FileNotFoundError(
+            f"No ML methods found under {args.clf_dir} "
+            "(need model.joblib or artifacts.joblib per subdir)"
+        )
 
     print(f"Re-inferring {len(methods)} methods: {methods}")
 
@@ -116,12 +132,10 @@ def main():
         try:
             model, scaler, pca, artifacts = load_model_artifacts(method_dir)
             if model is None and "mu_pos" not in artifacts and "knn_model" not in artifacts:
-                print(f"  SKIP {method_name}: no model/artifacts")
-                continue
+                raise FileNotFoundError("no usable model/artifacts")
             scores = predict_scores(embeddings, model, scaler=scaler, pca=pca, artifacts=artifacts)
-        except Exception as e:
-            print(f"  FAIL {method_name}: {e}")
-            continue
+        except Exception as exc:
+            raise RuntimeError(f"Inference failed for {method_name}: {exc}") from exc
 
         # Same format as embedding_classifier.save_predictions (test_predictions.csv)
         csv_path = os.path.join(write_dir, "test_predictions.csv")
@@ -134,18 +148,10 @@ def main():
                 f.write(f"{cid},{score:.6f},{pred_bin},{true_label},multiclass\n")
         print(f"  OK {method_name}: {csv_path}")
 
-        # Minimal final_results.json so load_val_metric() etc. do not break
-        results_path = os.path.join(write_dir, "final_results.json")
-        with open(results_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "method": method_name,
-                "checkpoints": {"best_auc_recall_score": 0.5},
-            }, f, indent=2)
-
     if args.output_dir:
         print(f"Done. Re-inference files written under {args.output_dir}")
     else:
-        print("Done. Each method dir now has test_predictions.csv and final_results.json for the screening pool.")
+        print("Done. Each method dir now has regenerated test_predictions.csv for the screening pool.")
 
 
 if __name__ == "__main__":

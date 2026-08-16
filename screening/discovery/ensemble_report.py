@@ -3,7 +3,7 @@
 Ensemble Report (No Ground Truth)
 ==================================
 
-Ensembles NN and ML predictions on unlabeled data (new test set, no labels), runs ALL
+Ensembles NN and ML predictions on an unlabeled discovery pool, runs ALL
 ensemble methods (RRF, rank_avg, vote_topK, score_avg, weighted_rrf), produces
 per-combo top-25/50/100 lists, agreement analysis, and a well-documented report.
 
