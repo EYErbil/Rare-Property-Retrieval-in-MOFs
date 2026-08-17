@@ -29,12 +29,6 @@ keywords:
   - reciprocal-rank fusion
   - density functional theory
   - HSE06
-# TODO after the Zenodo software archive is minted: uncomment and fill.
-#   The GitHub-Zenodo integration creates this DOI when you cut a release.
-# identifiers:
-#   - type: doi
-#     value: 10.5281/zenodo.XXXXXXX
-#     description: Archived software release
 preferred-citation:
   type: article
   title: >-
@@ -68,5 +62,4 @@ references:
     publisher:
       name: Zenodo
     license: CC-BY-4.0
-    # TODO: replace with the minted dataset DOI before submission.
-    doi: 10.5281/zenodo.0000000
+    doi: 10.5281/zenodo.21978025

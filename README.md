@@ -87,7 +87,7 @@ lists and the retained fine-tuning and general-analysis environment records are 
 CSV files, ranked tables, curated result tables, plots, trained checkpoints, and legacy nomination
 archives are not distributed. The code recomputes these artifacts for a fresh run, but without the
 paper checkpoints and prediction CSVs it does not promise numerically identical scores or ranks.
-The Zenodo deposit contains
+The Zenodo deposit (https://doi.org/10.5281/zenodo.21978025) contains
 only the SOAP and frozen pretrained PMTransformer embedding archives, the PORMAKE structure files
 of the 13,802-member generated pool, and the DFT calculation directories for the 25 QMOF-pool and
 23 generated submissions (without licensed `POTCAR` files).
