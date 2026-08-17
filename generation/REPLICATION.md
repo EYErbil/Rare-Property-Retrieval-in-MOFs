@@ -465,7 +465,8 @@ Canonical entrypoint: **`REPO_ROOT/scripts/12_nominate_paper_candidates.sh`**; i
 > self-contained: this copy was used for the **generated-MOF pool**, the screening module's
 > [`discovery/nominate_diverse_dft.py`](../screening/discovery/nominate_diverse_dft.py)
 > for the **unlabelled QMOF pool**. Both expose the same CLI and strategy set — cluster quota,
-> MMR, uncertainty quota, long-tail exploration — differing only in pool-specific reporting.
+> MMR, a disagreement-proxy quota (retaining the legacy `uncertainty` output name), and long-tail
+> exploration — differing only in pool-specific reporting.
 > For the paper, `--embeddings_path` always points to SOAP descriptors and
 > `--embedding_key soap_descriptors`: for the generated pool, SOAP is the sole structural-diversity
 > coordinate in both the main and exploration tiers. (The second-phase QMOF acquisition in the
@@ -478,8 +479,8 @@ Run from **`REPO_ROOT`** so imports resolve predictably:
 cd REPO_ROOT
 ```
 
-Run the paper nomination **once, in SOAP space**. PMTransformer embeddings are not a nomination
-diversity alternative in the paper workflow.
+Run the generated-pool paper nomination **once, in SOAP space**. PMTransformer embeddings are not
+a nomination-diversity alternative for the generated-pool workflow.
 
 #### Canonical paper run — SOAP diversity for both tiers
 
@@ -543,8 +544,8 @@ python nominate_diverse_dft.py \
 
 | File role | Typical filename | Matrix key for `--embedding_key` |
 |-----------|------------------|-----------------------------------|
-| PMTransformer / unified embeddings (ML scoring and representation analysis, not paper nomination geometry) | `generated_pmt_embeddings.npz`, `pmt_embeddings_qmof_all.npz` | `embeddings` |
-| SOAP descriptors (sole paper nomination geometry) | `*_soap_descriptors.npz` from `compare_generated_vs_qmof.py` | `soap_descriptors` |
+| PMTransformer / unified embeddings (ML scoring and representation analysis; also a diversity coordinate in the second-phase QMOF run) | `generated_pmt_embeddings.npz`, `pmt_embeddings_qmof_all.npz` | `embeddings` |
+| SOAP descriptors (sole generated-pool nomination geometry and the second QMOF diversity coordinate) | `*_soap_descriptors.npz` from `compare_generated_vs_qmof.py` | `soap_descriptors` |
 
 Always verify keys:
 

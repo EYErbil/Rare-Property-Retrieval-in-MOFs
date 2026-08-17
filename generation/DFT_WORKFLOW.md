@@ -8,9 +8,10 @@ MAGMOM management between stages. Common failure modes: [TROUBLESHOOTING.md](TRO
 
 ## Post-nomination DFT workflow
 
-The paper nomination is the single SOAP-space output from Step 12. SOAP supplies structural
-geometry for both the RRF-prioritized main tier and the disagreement-prioritized exploration tier;
-there is no PMTransformer-diversity nomination list. Of the 25 generated nominees, two
+The generated-pool paper nomination is the single SOAP-space output from Step 12. SOAP supplies
+structural geometry for both the RRF-prioritized main tier and the disagreement-prioritized
+exploration tier; there is no PMTransformer-diversity nomination list for the generated pool. Of
+the 25 generated nominees, two
 lanthanide-containing structures were excluded before submission, leaving 23 generated DFT
 directories in the release record.
 
@@ -479,4 +480,3 @@ bash scripts/Dft-After-nomination/copy/mass_submit/submit_hse_single.sh
 Same skip rules as Steps 20 and 23. After this stage finishes, harvest band
 gaps per MOF from each `HSE-single/OUTCAR` (and DOSCAR/EIGENVAL if you need
 finer plots). That is the end of the post-nomination cascade.
-

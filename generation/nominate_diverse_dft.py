@@ -4,12 +4,12 @@ Diversity-aware candidate nomination from reciprocal-rank-fused predictions.
 
 The matrix supplied by --embeddings_path is the diversity coordinate used for
 PCA, clustering, cosine distances, MMR, exploration, and visualization. The
-paper entrypoints supply SOAP descriptors here; PMTransformer embeddings are
-used by the predictive models and for the labeled-data split, not as the
-prospective nomination-diversity coordinate.
+generated-pool paper entrypoint supplies SOAP descriptors. The second-phase
+QMOF acquisition runs the same procedure separately with SOAP descriptors and
+PMTransformer embeddings.
 
-Canonical paper usage
----------------------
+Canonical SOAP-space usage
+--------------------------
   python nominate_diverse_dft.py \
     --embeddings_path  /path/to/generated_soap_descriptors.npz \
     --embedding_key soap_descriptors \
@@ -27,7 +27,9 @@ Canonical paper usage
 
 The paper wrappers pin the remaining strategy weights explicitly; see
 ``scripts/12_nominate_paper_candidates.sh`` in the generation module and
-``scripts/07_nominate_candidates.sh`` in the screening module.
+``scripts/07_nominate_candidates.sh`` in the screening module. The screening
+wrapper accepts ``DIVERSITY_SPACE=SOAP`` or ``DIVERSITY_SPACE=PMTRANSFORMER``
+for the two QMOF representation-specific runs.
 """
 
 import os
@@ -257,12 +259,12 @@ def reciprocal_rank_fusion(models, cids, k=60):
 
 
 # ---------------------------------------------------------------------------
-# Uncertainty / disagreement
+# Disagreement / exploration proxies (legacy names retained for compatibility)
 # ---------------------------------------------------------------------------
 
 
 def compute_uncertainty(models, cids, nn_names, ml_names):
-    """For every CID compute rank-based uncertainty signals.
+    """For every CID compute rank-based disagreement/exploration proxies.
 
     Returns dict-of-dicts with keys:
       rank_std          – std of ranks across all models
@@ -440,7 +442,7 @@ def strategy_mmr(pool_cids, pool_quality_norm, dist_matrix, lam, budget):
 def strategy_uncertainty_quota(pool_cids, pool_combined_score,
                                cluster_labels, budget, max_per_cluster):
     """Like cluster_quota but ranks within each cluster by a combined
-    quality + uncertainty + disagreement score (lower = better)."""
+    quality + rank-spread proxy + disagreement score (lower = better)."""
     cluster_members = defaultdict(list)
     for i, c in enumerate(pool_cids):
         cluster_members[cluster_labels[i]].append(i)
@@ -687,8 +689,8 @@ def write_report(output_dir, args_dict, pool_size_actual, n_clusters, sil_score,
             f.write(f"| {j} | {cid} | {nom_count.get(cid, 0)} | - |\n")
         f.write("\n")
 
-        # Uncertainty profile of nominees
-        f.write("## Uncertainty Profile of Combined Nominees\n\n")
+        # Disagreement/exploration-proxy profile of nominees
+        f.write("## Disagreement and Exploration-Proxy Profile of Combined Nominees\n\n")
         f.write("| CIF ID | Rank Std | Rank Range | NN-ML Disagreement |\n|---|---|---|---|\n")
         for cid in combined_cids:
             u = unc_data.get(cid, {})
@@ -748,11 +750,11 @@ def main():
                         help="RRF smoothing parameter (default: 60)")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed (default: 42)")
-    # Uncertainty weights for strategy C
+    # Rank-spread/disagreement-proxy weights for strategy C
     parser.add_argument("--alpha", type=float, default=0.50,
                         help="Weight for quality rank in strategy C (default: 0.50)")
     parser.add_argument("--beta", type=float, default=0.30,
-                        help="Weight for uncertainty in strategy C (default: 0.30)")
+                        help="Weight for the rank-spread exploration proxy in strategy C (default: 0.30)")
     parser.add_argument("--gamma", type=float, default=0.20,
                         help="Weight for NN-ML disagreement in strategy C (default: 0.20)")
     # Model type annotations
@@ -928,7 +930,7 @@ def main():
     print(f"  RRF ensemble computed over {len(prediction_models)} models")
 
     # -------------------------------------------------------------------------
-    # 4. Uncertainty signals
+    # 4. Disagreement/exploration proxies (legacy variables retain "uncertainty" names)
     # -------------------------------------------------------------------------
     if len(candidate_cids) < args.budget:
         print(f"ERROR: nomination budget {args.budget} exceeds the "
@@ -1007,14 +1009,14 @@ def main():
         strategy_results[sname] = sel_b
         print(f"    Selected {len(sel_b)} nominees")
 
-    # --- Strategy C: Uncertainty-weighted cluster quota ---
-    print(f"\n  Strategy C: Uncertainty-weighted cluster quota (alpha={args.alpha}, beta={args.beta}, gamma={args.gamma})")
+    # --- Strategy C: Disagreement-proxy cluster quota ---
+    print(f"\n  Strategy C: Disagreement-proxy cluster quota (alpha={args.alpha}, beta={args.beta}, gamma={args.gamma})")
     pool_unc_std = normalize_01([unc_data[c]["rank_std"] for c in pool_cids])
     pool_unc_dis = normalize_01([unc_data[c]["nn_ml_disagreement"] for c in pool_cids])
-    # Combined: lower = better (quality is already lower=better, uncertainty we WANT high → invert)
+    # Combined: lower = better (quality is lower=better; high rank spread is preferred → invert)
     pool_combined = (
         args.alpha * normalize_01(pool_quality)                  # quality: lower rank = better
-        + args.beta * (1.0 - pool_unc_std)                      # prefer HIGH uncertainty (inverted)
+        + args.beta * (1.0 - pool_unc_std)                      # prefer HIGH rank spread (inverted)
         + args.gamma * (1.0 - pool_unc_dis)                     # prefer HIGH disagreement (inverted)
     )
     sel_c = strategy_uncertainty_quota(pool_cids, pool_combined, labels,

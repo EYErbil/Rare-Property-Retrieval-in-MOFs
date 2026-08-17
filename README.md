@@ -51,7 +51,7 @@ flowchart LR
 |---|---|---|
 | [`screening/`](screening/) | Model training (PMTransformer fine-tuning, ExtraTrees on frozen embeddings), rank fusion, evaluation, and diversity-aware nomination on known structures | [`screening/README.md`](screening/README.md) |
 | [`generation/`](generation/) | Reference-informed PORMAKE assembly of new candidates, screening with the trained models, nomination, and the four-stage VASP validation cascade | [`generation/README.md`](generation/README.md) |
-| [`env/`](env/) | Pinned pip freezes of the two paper environments (fine-tuning and analysis) |  |
+| [`env/`](env/) | Recorded pip freezes for model fine-tuning and general analysis; see [`env/README.md`](env/README.md) for their scope |  |
 
 ## Reproducing the paper
 
@@ -83,7 +83,7 @@ and [generation/README.md → *Beyond low-band-gap MOFs*](generation/README.md#b
 ## Code, not results
 
 This repository contains **code and workflow only**. The exact train/validation/test partition membership
-lists and pinned environments are committed (they are required inputs for reproduction). Derived
+lists and the retained fine-tuning and general-analysis environment records are committed. Derived
 CSV files, ranked tables, curated result tables, plots, trained checkpoints, and legacy nomination
 archives are not distributed. The code recomputes these artifacts for a fresh run, but without the
 paper checkpoints and prediction CSVs it does not promise numerically identical scores or ranks.
@@ -108,6 +108,13 @@ structure assembly), [MOFTransformer / PMTransformer](https://github.com/hspark1
 [DScribe](https://github.com/SINGROUP/dscribe), [pymatgen](https://pymatgen.org/),
 [Open Babel](https://openbabel.org/), [scikit-learn](https://scikit-learn.org/), and VASP.
 
+## Data licensing and provenance
+
+The [MIT License](LICENSE) covers the author-written software. Data, derived metadata, bundled
+third-party materials, and their source-specific terms are documented separately in
+[`DATA_AND_THIRD_PARTY_NOTICES.md`](DATA_AND_THIRD_PARTY_NOTICES.md). The large archival data
+release also carries a collection-level data license, provenance table, and SHA-256 manifest.
+
 ## Citation
 
 > Erbil, E. Y., Çağatan, Ö. V. & Dereli, B. Enrichment-driven discovery of low-band-gap
@@ -119,14 +126,6 @@ structure assembly), [MOFTransformer / PMTransformer](https://github.com/hspark1
   author  = {Erbil, Ege Yi{\u{g}}it and \c{C}a\u{g}atan, {\"O}mer Veysel and Dereli, B{\"u}\c{s}ra},
   year    = {2026},
   note    = {Manuscript in preparation}
-}
-@misc{rare-property-retrieval,
-  title  = {rare-property-retrieval: an enrichment-driven workflow for discovering
-            materials with rare target properties},
-  author = {Erbil, Ege Yi{\u{g}}it},
-  year   = {2026},
-  note   = {Ko\c{c} University},
-  url    = {https://github.com/EYErbil/Rare-Property-Retrieval-in-MOFs}
 }
 ```
 <!-- TODO: update journal, volume and DOI once the paper is published. -->

@@ -60,16 +60,17 @@ workflow; **16** yielded reportable HSE06 results and **6** had band gaps at or 
 both paper arms, 48 structures were submitted, 41 yielded reportable HSE06 results, and 9 were
 confirmed as low-gap (3 QMOF-pool + 6 generated).
 
-Each hit is a force-converged PBE-D3(BJ) local minimum (a metastable structure, not a generator
-artefact); thermodynamic stability and experimental synthesizability are beyond this computational
-screen.
+Each hit reaches a force-converged PBE-D3(BJ) stationary geometry under the archived protocol.
+Without a Hessian or phonon calculation, this does not establish a local minimum or metastability;
+dynamical and thermodynamic stability and experimental synthesizability are beyond this
+computational screen.
 
 ## How this repository maps to the paper
 
 | Paper section (Methods/Results) | What this repository provides |
 |---|---|
 | *Generated MOF database construction* | `scripts/analyze_reference_db.py`, `scripts/build_custom_dirs.py`, `bulk_pormake_generation/make_candidates.py`, `scripts/build_materials_batched.py` |
-| *Candidate selection for validation* | `nominate_diverse_dft.py` (SOAP clustering + MMR + uncertainty) |
+| *Candidate selection for validation* | `nominate_diverse_dft.py` (SOAP clustering + MMR + a model-disagreement exploration proxy) |
 | *Selected candidates sample diverse regions …* (chemical-space figures) | `scripts/soap_analysis/`, `scripts/pmtransformer_analysis/`, `qmof_pool_analysis/` |
 | *DFT protocol* (PBE-D3(BJ) → HSE06) | `scripts/Dft-After-nomination/` (four-stage VASP cascade + MAGMOM manager) |
 | *Electronic-structure analysis* (projected DOS) | `DOS_analysis/` |
@@ -211,11 +212,12 @@ entirely and pass your own `--bb-dir` / `--topo-dir` straight to `make_candidate
 
 ## Code, not results
 
-This repository contains the **code and workflow only** — no result files. The exact package
-versions used for the paper are frozen in [`env/`](env/) (`requirements_finetuning.txt` and
-`requirements_analysis.txt`); the top-level `requirements.txt` remains the permissive
-quick-install list; the exact package versions used for the paper are frozen at the repository
-root in [`../env/`](../env/). The paper's exact train/validation/test partition JSONs are committed in the
+This repository contains the **code and workflow only** — no result files. The retained package
+records at the repository root cover model fine-tuning and general analysis
+([`../env/`](../env/)); the production SMOTE--ExtraTrees run used scikit-learn 1.6.0, as recorded
+in the paper's Supplementary Information, but a separate full freeze of that production
+classifier environment was not retained. The top-level `requirements.txt` remains a permissive
+quick-install list. The paper's exact train/validation/test partition JSONs are committed in the
 screening module, [`../screening/data/splits/`](../screening/data/splits/strategy_d_farthest_point/).
 
 Derived CSVs, ranked lists, curated result tables, plots, trained checkpoints, and legacy
@@ -311,7 +313,7 @@ If you use this software, please cite the accompanying paper:
 ```
 <!-- TODO: update journal, volume and DOI once the paper is published. -->
 
-To cite this software repository specifically, see the [repository-level README](../README.md).
+Use the accompanying-paper citation above for this repository and its generation module.
 
 ## License
 

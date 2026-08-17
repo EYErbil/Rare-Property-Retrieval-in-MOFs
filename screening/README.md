@@ -2,7 +2,7 @@
 
 **Diversity-aware ensemble learning on pretrained PMTransformer embeddings for retrieving rare-property materials.**
 
-This is the **screening module** of the [rare-property-retrieval](../) repository, demonstrated on low-band-gap MOF discovery (HSE06 gap ≤ 1.0 eV). It fine-tunes a PMTransformer regressor (the [MOFTransformer](https://github.com/hspark1212/MOFTransformer) architecture), trains classical rare-class classifiers on frozen pretrained embeddings, fuses both rankings via Reciprocal Rank Fusion (RRF), and selects validation candidates with a diversity-aware nomination strategy built on SOAP (Smooth Overlap of Atomic Positions) descriptors.
+This is the **screening module** of the [rare-property-retrieval](../) repository, demonstrated on low-band-gap MOF discovery (HSE06 gap ≤ 1.0 eV). It fine-tunes a PMTransformer regressor (the [MOFTransformer](https://github.com/hspark1212/MOFTransformer) architecture), trains classical rare-class classifiers on frozen pretrained embeddings, fuses both rankings via Reciprocal Rank Fusion (RRF), and selects validation candidates with pool-specific representation-space diversity runs.
 
 > | Module | Role |
 > |---|---|
@@ -52,7 +52,7 @@ The pipeline extracts two complementary prediction signals from a single foundat
 
 2. **Fine-tuned PMTransformer** — The full model is fine-tuned end-to-end for band-gap regression, adapting both encoder and prediction head to the target property.
 
-These two approaches capture complementary signal: the trees operate on frozen general-purpose features while the fine-tuned model has task-adapted features. Their predictions are fused via RRF, and NN-ML disagreement provides an uncertainty signal.
+These two approaches capture complementary signal: the trees operate on frozen general-purpose features while the fine-tuned model has task-adapted features. Their predictions are fused via RRF, and NN-ML disagreement provides a bounded exploration proxy, not calibrated uncertainty.
 
 **Diversity-aware candidate nomination (Step 7):** Rather than selecting the top-K candidates by
 score alone, the nomination pipeline applies cluster-quota round-robin and Maximal Marginal
@@ -125,7 +125,7 @@ to re-run the screening arm is committed (the generation + DFT arm lives in
 | Artifact | Location |
 |---|---|
 | Exact train/validation/test partition membership lists (1,136 / 524 / 9,150; 60 / 5 / 9 positives) | [`data/splits/strategy_d_farthest_point/`](data/splits/strategy_d_farthest_point/) |
-| Pinned dependency freezes (fine-tuning + analysis environments) | [`../env/`](../env/) (repository root) |
+| Recorded dependency freezes (fine-tuning + general-analysis environments) | [`../env/`](../env/) (repository root; scope documented in [`../env/README.md`](../env/README.md)) |
 | SI input-representation ablation (classifier retrained on SOAP) | [`figures/representation_ablation.py`](figures/representation_ablation.py) |
 | Fine-tuning configs matching the paper's Methods exactly (seed 42/123/456) | [`experiments/`](experiments/) |
 
@@ -231,12 +231,14 @@ pip install moftransformer
 pip install -r requirements.txt
 ```
 
-`requirements.txt` gives permissive version ranges for a fresh install. The **exact** package
-versions used for the paper are frozen at the repository root, in
+`requirements.txt` gives permissive version ranges for a fresh install. The retained package
+records at the repository root are
 [`../env/requirements_finetuning.txt`](../env/requirements_finetuning.txt)
 (model fine-tuning and NN inference) and [`../env/requirements_analysis.txt`](../env/requirements_analysis.txt)
-(SOAP, classifiers, nomination, figures) — use those to replicate the paper's environments
-bit-for-bit.
+(general SOAP, nomination, and figure analysis). The production SMOTE--ExtraTrees run used
+scikit-learn 1.6.0, as recorded in the paper's Supplementary Information; a separate full freeze
+of that production classifier environment was not retained. See [`../env/README.md`](../env/README.md)
+for the exact scope of the two available freezes.
 
 ### Reproducibility checklist (cold clone)
 
@@ -295,7 +297,8 @@ membership-only verification.
 The archive was computed before any task-specific fitting with the frozen pretrained
 PMTransformer encoder. Cosine distances in this fixed local-and-global representation determined
 the paper partitions without label-trained leakage. The same embeddings later supply Step 3
-classifier features; SOAP, not PMTransformer distance, supplies the nomination geometry.
+classifier features. The generated-pool nomination uses SOAP geometry; the second-phase QMOF
+acquisition runs separately in PMTransformer-embedding and SOAP spaces.
 
 `SPLIT_MODE=fresh` is the only mode that runs a new PMTransformer forward pass and
 `embedding_split.py`; it writes exclusively below
@@ -362,32 +365,39 @@ sbatch scripts/07_nominate_candidates.sh   # CPU, ~1-2h
 This is the final step: selecting 25 structures for DFT band-gap calculation. Rather than taking the top 25 by score, the pipeline ensures structural diversity:
 
 1. **RRF shortlist** — Build a pool of the top 500 candidates from 1 NN + 1 ML model fused by RRF
-2. **SOAP geometry** — PCA-50 + KMeans groups the pool into 20 structural clusters using SOAP only
+2. **Representation-specific geometry** — PCA-50 + KMeans groups the pool into 20 structural clusters in the selected diversity representation
 3. **Diverse selection** via four strategies:
    - **A. Cluster-quota round-robin** — best candidate per cluster, cycling until budget is filled
-   - **B. Maximal Marginal Relevance (MMR)** — iteratively balances RRF priority with SOAP distance from already-selected nominees
-   - **C. Uncertainty-weighted quota** — ranks within the same SOAP clusters using a combined RRF + NN–ML disagreement priority score
-   - **D. Long-tail exploration** — reserves 5 slots for high-disagreement structures outside the top-500 pool, while still enforcing diversity in SOAP space
+   - **B. Maximal Marginal Relevance (MMR)** — iteratively balances RRF priority with distance in the selected diversity representation
+   - **C. Disagreement-weighted quota** — ranks within the same clusters using a combined RRF + NN–ML disagreement priority score (the legacy output filename retains `uncertainty`)
+   - **D. Long-tail exploration** — reserves 5 slots for high-disagreement structures outside the top-500 pool, while still enforcing diversity in the selected representation
 4. **Combined list** — structures nominated by the most strategies are selected first
 
-The paper pipeline runs **once, in SOAP space**. There is no PMTransformer-diversity nomination
-run. PMTransformer distances are used earlier, before training, to design the labeled partitions;
-SOAP alone supplies nomination geometry because it is a training-free local chemical-environment
-measure independent of the learned representation and prediction scores. RRF and disagreement
-remain ranking/prioritization signals for the main and exploration tiers.
+The nomination command operates on one diversity representation at a time. For the generated
+pool, the paper pipeline runs it once in SOAP space. For the second-phase QMOF acquisition, the
+paper pipeline runs it separately in PMTransformer-embedding and SOAP spaces and combines the two
+recorded outputs into the realized 25-candidate set. RRF and disagreement remain
+ranking/prioritization signals for the main and exploration tiers, not diversity coordinates.
 
-**SOAP descriptors for Step 7:** The run requires a precomputed `soap_descriptors.npz` file. It is
+**Diversity inputs for Step 7:** The SOAP run requires a precomputed `soap_descriptors.npz` file,
 produced by **F4** (`scripts/figures/04_soap_descriptors_umap.sh`) or restored from the Globus SOAP
-archive. Set `SOAP_EMBEDDINGS` in `scripts/07_nominate_candidates.sh` to that file. Missing SOAP is
-a hard prerequisite failure for the paper workflow, not a reason to fall back to PMTransformer
-nomination geometry.
+archive. The PMTransformer run uses the aligned all-QMOF archive restored to
+`../generation/embeddings/pmt_embeddings_qmof_all.npz`. Run the wrapper once per representation:
+
+```bash
+DIVERSITY_SPACE=SOAP sbatch scripts/07_nominate_candidates.sh
+DIVERSITY_SPACE=PMTRANSFORMER sbatch scripts/07_nominate_candidates.sh
+```
+
+The default remains `SOAP`; `DIVERSITY_EMBEDDINGS`, `DIVERSITY_KEY`, `DIVERSITY_LABEL`, and
+`OUTPUT_DIR` can override the selected archive, key, label, and destination.
 
 **Key parameters** (edit at the top of `scripts/07_nominate_candidates.sh`):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `NN_EXP` | `exp364_fulltune` | Which NN experiment to use |
-| `ML_METHOD` | `extra_trees` | Which ML classifier to use |
+| `ML_METHOD` | `smote_extra_trees` | Which ML classifier to use |
 | `POOL_SIZE` | `500` | Size of RRF shortlist pool |
 | `N_CLUSTERS` | `20` | Number of KMeans clusters |
 | `BUDGET` | `25` | Number of structures to nominate |
@@ -396,21 +406,28 @@ nomination geometry.
 **Outputs:**
 
 ```
-data/unlabeled/nomination-SOAP/     # sole paper nomination run
-├── FINAL_TOP25_diverse.txt          # The 25 CIF IDs for DFT
-├── FINAL_TOP25_diverse.csv          # rank, cif_id, rrf_rank, strategies_nominating, rank_std, rank_range, nn_ml_disagreement, cluster
-├── COMBINED_top25.txt               # union, ranked by how many strategies nominated each
-├── A_cluster_quota_top25.txt        # one file per selection strategy (A/B/C/D)
-├── B_mmr_lambda0.3_top25.txt        #   (one B file per MMR lambda)
-├── C_uncertainty_quota_top25.txt
-├── D_longtail_exploration_top25.txt
-├── shortlist_pool.csv               # Full shortlist with cluster assignments
-├── diversity_report.md              # Methodology and comparison with old nominees
-└── plots/                           # UMAP visualisations
+data/unlabeled/
+├── nomination-SOAP/                 # QMOF SOAP-space run
+└── nomination-PMTransformer/        # QMOF PMTransformer-space run
+```
+
+Each representation-specific directory contains:
+
+```
+FINAL_TOP25_diverse.txt               # The 25 CIF IDs for that representation run
+FINAL_TOP25_diverse.csv               # ranks, strategies, disagreement, and cluster
+COMBINED_top25.txt                    # union ranked by number of nominating strategies
+A_cluster_quota_top25.txt             # one file per selection strategy (A/B/C/D)
+B_mmr_lambda0.3_top25.txt             # one B file per MMR lambda
+C_uncertainty_quota_top25.txt         # legacy filename; disagreement-proxy quota
+D_longtail_exploration_top25.txt
+shortlist_pool.csv                    # full shortlist with cluster assignments
+diversity_report.md                   # methodology and selection summary
+plots/                                # representation-specific visualisations
 ```
 
 All cluster labels, MMR distances, quota diversity terms, and exploration-tier diversity checks in
-this output are calculated from SOAP descriptors.
+each output are calculated from that run's selected diversity representation.
 
 ---
 
@@ -549,9 +566,9 @@ evaluated by recall@K.
 | **Two-model production fusion** | One fine-tuned regressor and one frozen-embedding SMOTE--ExtraTrees classifier provide complementary rankings without multiplying correlated variants. |
 | **Reciprocal Rank Fusion** | Rank-based fusion handles heterogeneous score scales (regression logits vs classification probabilities) without normalisation artifacts. |
 | **Huber loss + Spearman early stopping** | Huber is robust to outlier band gaps; Spearman rho measures ranking quality, aligning training with the discovery objective. |
-| **1 NN + 1 ML for nomination** | Simpler than multi-model ensembles; diversity comes from SOAP-based selection rather than model proliferation. Ensemble experiments with 3 NN + 2 ML remain available via Step 4. |
-| **SOAP-only nomination geometry** | SOAP supplies the structural-diversity coordinate for both main and exploration tiers because its training-free local-environment geometry is independent of learned model features and priority scores. |
-| **Long-tail exploration** | Reserves 5 of the 25 slots for high-uncertainty structures outside the main pool — a hedge against the ensemble's blind spots. |
+| **1 NN + 1 ML for nomination** | Simpler than multi-model ensembles; diversity comes from representation-space selection rather than model proliferation. Ensemble experiments with 3 NN + 2 ML remain available via Step 4. |
+| **Pool-specific nomination geometry** | The generated pool uses SOAP alone; the second-phase QMOF acquisition uses separate PMTransformer-embedding and SOAP runs. Geometry remains separate from learned priority scores in both cases. |
+| **Long-tail exploration** | Reserves 5 of the 25 representation-specific slots for high-disagreement structures outside the main pool — a hedge against the ensemble's blind spots. |
 
 ---
 
@@ -600,7 +617,7 @@ If you use this software, please cite the accompanying paper:
   note    = {Manuscript in preparation}
 }
 ```
-To cite this software repository specifically, see the [repository-level README](../README.md).
+Use the accompanying-paper citation above for this repository and its screening module.
 
 ## Acknowledgements
 

@@ -2080,7 +2080,7 @@ def generate_summary_report(data, output_dir):
     lines.append("2. **NN + ML complementarity**: NN uniquely finds UTIHAH (Fe), ML uniquely finds MOJWUF (Cu)")
     lines.append("3. **Ensemble > single model**: RRF covers 5-6/9 vs 3-4/9 alone")
     lines.append("4. **4 MOFs are truly hard**: structural novelty beyond current training data")
-    lines.append("5. **85x enrichment**: top-25 is 85x more likely to contain a conductor than random")
+    lines.append("5. **122x enrichment**: top-25 is 122x more likely to contain a low-band-gap MOF than random")
     lines.append("")
 
     report_path = os.path.join(output_dir, 'summary_report.md')

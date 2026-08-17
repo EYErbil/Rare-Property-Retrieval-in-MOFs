@@ -52,4 +52,4 @@ python nominate_diverse_dft.py \
   --rrf_k 60 \
   --seed 42
 
-echo "SOAP-only nomination: $OUTPUT_DIR/FINAL_TOP25_diverse.txt"
+echo "Generated-pool SOAP nomination: $OUTPUT_DIR/FINAL_TOP25_diverse.txt"

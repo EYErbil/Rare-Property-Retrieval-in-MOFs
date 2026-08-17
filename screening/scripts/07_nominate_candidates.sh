@@ -11,11 +11,10 @@
 
 # Paper candidate-selection entrypoint for the unlabeled QMOF pool.
 # Predictive scores come from one fine-tuned PMTransformer regressor and one
-# SMOTE--ExtraTrees classifier on frozen PMTransformer embeddings. Candidate
-# diversity is evaluated only in SOAP space: this training-free geometric
-# coordinate avoids selecting near-duplicates using the same representation
-# that supplies the predictive scores. RRF and disagreement remain priority
-# signals; neither is treated as a structural-diversity coordinate.
+# SMOTE--ExtraTrees classifier on frozen PMTransformer embeddings. The paper's
+# second-phase QMOF acquisition runs this wrapper separately in SOAP and
+# PMTransformer-embedding diversity spaces. RRF and disagreement remain
+# priority signals; neither is treated as a structural-diversity coordinate.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,11 +27,33 @@ NN_EXP="${NN_EXP:-exp364_fulltune}"
 ML_METHOD="${ML_METHOD:-smote_extra_trees}"
 NN_CSV="${NN_CSV:-$EXP_BASE/$NN_EXP/inference_predictions.csv}"
 ML_CSV="${ML_CSV:-$DISCOVERY_DATA/ml_predictions/$ML_METHOD/test_predictions.csv}"
-SOAP_EMBEDDINGS="${SOAP_EMBEDDINGS:-$BASE_DIR/../generation/soap_analysis/soap_descriptors_sparse.npz}"
-SOAP_KEY="${SOAP_KEY:-soap_descriptors}"
-OUTPUT_DIR="${OUTPUT_DIR:-$DISCOVERY_DATA/nomination-SOAP}"
+DIVERSITY_SPACE="${DIVERSITY_SPACE:-SOAP}"
 
-for required in "$NN_CSV" "$ML_CSV" "$SOAP_EMBEDDINGS"; do
+case "${DIVERSITY_SPACE^^}" in
+  SOAP)
+    DEFAULT_DIVERSITY_EMBEDDINGS="$BASE_DIR/../generation/soap_analysis/soap_descriptors_sparse.npz"
+    DEFAULT_DIVERSITY_KEY="soap_descriptors"
+    DEFAULT_DIVERSITY_LABEL="SOAP"
+    DEFAULT_OUTPUT_DIR="$DISCOVERY_DATA/nomination-SOAP"
+    ;;
+  PMT|PMTRANSFORMER)
+    DEFAULT_DIVERSITY_EMBEDDINGS="$BASE_DIR/../generation/embeddings/pmt_embeddings_qmof_all.npz"
+    DEFAULT_DIVERSITY_KEY="embeddings"
+    DEFAULT_DIVERSITY_LABEL="PMTransformer"
+    DEFAULT_OUTPUT_DIR="$DISCOVERY_DATA/nomination-PMTransformer"
+    ;;
+  *)
+    echo "ERROR: DIVERSITY_SPACE must be SOAP or PMTRANSFORMER, got: $DIVERSITY_SPACE" >&2
+    exit 2
+    ;;
+esac
+
+DIVERSITY_EMBEDDINGS="${DIVERSITY_EMBEDDINGS:-$DEFAULT_DIVERSITY_EMBEDDINGS}"
+DIVERSITY_KEY="${DIVERSITY_KEY:-$DEFAULT_DIVERSITY_KEY}"
+DIVERSITY_LABEL="${DIVERSITY_LABEL:-$DEFAULT_DIVERSITY_LABEL}"
+OUTPUT_DIR="${OUTPUT_DIR:-$DEFAULT_OUTPUT_DIR}"
+
+for required in "$NN_CSV" "$ML_CSV" "$DIVERSITY_EMBEDDINGS"; do
   if [ ! -f "$required" ]; then
     echo "ERROR: required input not found: $required" >&2
     exit 2
@@ -43,9 +64,9 @@ done
 # PCA=50, KMeans n_init=10, exploration score weights 0.60/0.40, and
 # exploration MMR lambda=0.40.
 python discovery/nominate_diverse_dft.py \
-  --embeddings_path "$SOAP_EMBEDDINGS" \
-  --embedding_key "$SOAP_KEY" \
-  --embedding_label SOAP \
+  --embeddings_path "$DIVERSITY_EMBEDDINGS" \
+  --embedding_key "$DIVERSITY_KEY" \
+  --embedding_label "$DIVERSITY_LABEL" \
   --prediction_csvs \
     "$NN_EXP=$NN_CSV" \
     "$ML_METHOD=$ML_CSV" \
@@ -72,4 +93,4 @@ python discovery/nominate_diverse_dft.py \
   --seed 42
 
 section "STEP 7 COMPLETE"
-echo "SOAP-only nomination: $OUTPUT_DIR/FINAL_TOP25_diverse.txt"
+echo "$DIVERSITY_LABEL-space nomination: $OUTPUT_DIR/FINAL_TOP25_diverse.txt"
