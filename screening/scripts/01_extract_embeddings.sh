@@ -55,7 +55,7 @@ case "$SPLIT_MODE" in
             echo "ERROR: labeled PMTransformer archive not found:"
             echo "       $PAPER_EMBEDDINGS_ARCHIVE"
             echo "       Existing canonical split JSONs were left untouched."
-            echo "       Restore the Globus archive there or set PAPER_EMBEDDINGS_ARCHIVE."
+            echo "       Restore the Zenodo archive there or set PAPER_EMBEDDINGS_ARCHIVE."
             exit 2
         fi
 

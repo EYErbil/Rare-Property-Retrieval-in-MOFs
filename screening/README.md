@@ -130,7 +130,7 @@ to re-run the screening arm is committed (the generation + DFT arm lives in
 | Fine-tuning configs matching the paper's Methods exactly (seed 42/123/456) | [`experiments/`](experiments/) |
 
 Derived CSVs, ranked tables, curated result tables, plots, trained checkpoints, and legacy
-nomination folders are not distributed. Globus contains only the SOAP and frozen pretrained
+nomination folders are not distributed. The Zenodo deposit contains only the SOAP and frozen pretrained
 PMTransformer embedding archives plus DFT calculation directories for 25 QMOF-pool and
 23 generated submissions; this GitHub code regenerates the derived outputs.
 
@@ -279,14 +279,14 @@ Place all preprocessed files under `data/raw/test/` (MOFTransformer expects a pa
 ### Step 1: Extract Embeddings and Create Splits
 
 ```bash
-# Default paper mode: restore/verify exact membership from the Globus archive.
+# Default paper mode: restore/verify exact membership from the Zenodo archive.
 sbatch scripts/01_extract_embeddings.sh
 
 # Explicitly design a new, noncanonical split for another task.
 SPLIT_MODE=fresh FRESH_RUN_ID=my_new_target sbatch scripts/01_extract_embeddings.sh
 ```
 
-For the paper, restore the labeled Globus archive to
+For the paper, restore the labeled Zenodo archive to
 `data/embeddings/embeddings_pretrained.npz`. The default `SPLIT_MODE=paper` calls
 `data_preparation/materialize_paper_split.py`, verifies the archive counts (1,136 / 524 / 9,150;
 60 / 5 / 9 positives), and creates only missing canonical JSONs. It verifies but never overwrites
@@ -380,7 +380,7 @@ recorded outputs into the realized 25-candidate set. RRF and disagreement remain
 ranking/prioritization signals for the main and exploration tiers, not diversity coordinates.
 
 **Diversity inputs for Step 7:** The SOAP run requires a precomputed `soap_descriptors.npz` file,
-produced by **F4** (`scripts/figures/04_soap_descriptors_umap.sh`) or restored from the Globus SOAP
+produced by **F4** (`scripts/figures/04_soap_descriptors_umap.sh`) or restored from the Zenodo SOAP
 archive. The PMTransformer run uses the aligned all-QMOF archive restored to
 `../generation/embeddings/pmt_embeddings_qmof_all.npz`. Run the wrapper once per representation:
 

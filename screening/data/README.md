@@ -6,7 +6,7 @@ The MOF structure files are **not included** in this repository due to their siz
 **Included: the paper's exact partitions.** The final train/validation/test membership lists used in the
 manuscript are committed at `splits/strategy_d_farthest_point/{train,val,test}_bandgaps_regression.json`
 (1,136 / 524 / 9,150 structures; 60 / 5 / 9 low-band-gap positives). These JSONs are the ground
-truth for reproducing the paper. Restore the labeled Globus archive to
+truth for reproducing the paper. Restore the labeled Zenodo archive to
 `embeddings/embeddings_pretrained.npz`; the default Step 1 verifies the committed JSONs against its
 recorded split labels and never overwrites them. The structure files
 (`.grid`/`.griddata16`/`.graphdata`) still have to be prepared (Step 0) and placed/symlinked per

@@ -36,7 +36,7 @@ Run:
 
 Inputs (either --splits_dir OR --labels_csv provides the labels):
   --embeddings_npz  PMTransformer embeddings covering the labelled set
-                    (keys 'cif_ids' + 'embeddings'; e.g. the Globus archive
+                    (keys 'cif_ids' + 'embeddings'; e.g. the Zenodo archive
                     pmt_embeddings_qmof_all.npz).
   --soap_npz        SOAP descriptors for the same structures. The QMOF SOAP NPZ
                     is ~(20k x 244k) ~ 20 GB, so by default it is STREAMED and

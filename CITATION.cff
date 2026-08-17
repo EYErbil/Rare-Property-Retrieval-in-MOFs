@@ -1,0 +1,72 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite both the software (this file) and the
+  accompanying paper listed under preferred-citation.
+title: >-
+  rare-property-retrieval: an enrichment-driven workflow for discovering
+  materials with rare target properties
+abstract: >-
+  Code and workflow for enrichment-driven discovery of materials whose target
+  property is rare and expensive to validate. A fine-tuned property regressor
+  and a rare-class classifier on frozen pretrained embeddings are combined by
+  reciprocal-rank fusion; diversity-aware and disagreement-aware nomination
+  allocates a fixed budget of first-principles validations. Demonstrated on the
+  retrieval of low-band-gap metal-organic frameworks confirmed with HSE06.
+type: software
+license: MIT
+repository-code: "https://github.com/EYErbil/Rare-Property-Retrieval-in-MOFs"
+url: "https://github.com/EYErbil/Rare-Property-Retrieval-in-MOFs"
+authors:
+  - family-names: Erbil
+    given-names: "Ege Yiğit"
+    affiliation: "Koç University"
+    orcid: "https://orcid.org/0009-0007-5486-8111"
+keywords:
+  - rare-event retrieval
+  - metal-organic frameworks
+  - band gap
+  - machine learning
+  - reciprocal-rank fusion
+  - density functional theory
+  - HSE06
+# TODO after the Zenodo software archive is minted: uncomment and fill.
+#   The GitHub-Zenodo integration creates this DOI when you cut a release.
+# identifiers:
+#   - type: doi
+#     value: 10.5281/zenodo.XXXXXXX
+#     description: Archived software release
+preferred-citation:
+  type: article
+  title: >-
+    Enrichment-driven discovery of low-band-gap metal-organic frameworks
+  authors:
+    - family-names: Erbil
+      given-names: "Ege Yiğit"
+      affiliation: "Koç University"
+      orcid: "https://orcid.org/0009-0007-5486-8111"
+    - family-names: Çağatan
+      given-names: "Ömer Veysel"
+      affiliation: "Koç University"
+    - family-names: Dereli
+      given-names: "Büşra"
+      affiliation: "Koç University"
+  year: 2026
+  # TODO on acceptance: add journal, volume, pages and the article doi.
+references:
+  - type: data
+    title: >-
+      Data for Enrichment-driven discovery of low-band-gap metal-organic
+      frameworks
+    authors:
+      - family-names: Erbil
+        given-names: "Ege Yiğit"
+      - family-names: Çağatan
+        given-names: "Ömer Veysel"
+      - family-names: Dereli
+        given-names: "Büşra"
+    year: 2026
+    publisher:
+      name: Zenodo
+    license: CC-BY-4.0
+    # TODO: replace with the minted dataset DOI before submission.
+    doi: 10.5281/zenodo.0000000

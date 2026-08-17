@@ -57,7 +57,7 @@ Read sections **in order**. Replace every `REPO_ROOT` with the absolute path to 
 1. **`qmof.csv`** — QMOF database release table, read by `scripts/analyze_reference_db.py` (see its
    docstring). Download the release table from the
    [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF) and place it at
-   `REPO_ROOT/qmof.csv`; it is not committed or included in Globus.
+   `REPO_ROOT/qmof.csv`; it is not committed or included in the Zenodo deposit.
 
 2. **QMOF CIFs for SOAP** — A directory of `.cif` files for structures you treat as the QMOF reference set (subset or full). Used only when computing SOAP from CIFs (`--qmof-cif-dir`). Same basename conventions as your workflow expects.
 
@@ -78,7 +78,7 @@ Read sections **in order**. Replace every `REPO_ROOT` with the absolute path to 
    structural-diversity matrix for the generated-pool nomination; the second-phase QMOF
    acquisition ran the same procedure separately in PMTransformer-embedding and SOAP spaces, so
    both matrices are diversity inputs there. The generated PMTransformer cache is released
-   on Globus as `embeddings/generated_pmtransformer_embeddings.npz` (13,802 rows, identifiers and
+   on Zenodo as `embeddings/generated_pmtransformer_embeddings.npz` (13,802 rows, identifiers and
    row order identical to the generated SOAP archive); it can alternatively be regenerated in
    Step 7.
 
@@ -371,7 +371,7 @@ If you need **one** `.npz` covering labeled + unlabeled MOFs in the same embeddi
 - [`scripts/extract_all_embeddings_unified.py`](scripts/extract_all_embeddings_unified.py)
 
 This single-forward-pass extractor produced the aligned `pmt_embeddings_qmof_all.npz` reference
-cache (distributed via Globus). Copy it next to your `train_regressor` project or adjust `sys.path` as in
+cache (distributed via Zenodo). Copy it next to your `train_regressor` project or adjust `sys.path` as in
 your cluster workflow. See the script docstring for full CLI.
 
 ---

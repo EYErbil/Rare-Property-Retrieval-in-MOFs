@@ -7,7 +7,7 @@ SOAP is one of two diversity coordinates. RRF and model disagreement affect prio
 training-free local-environment geometry keeps structural selection independent of prediction
 scores.
 
-Restore these Globus archives to the paths shown:
+Restore these Zenodo archives to the paths shown:
 
 | File | Verified contents |
 |---|---|

@@ -87,7 +87,7 @@ when rebuilding or changing those libraries:
 
 | Input or resource | Contents |
 |----------|----------|
-| `qmof.csv` (download separately) | Public QMOF release table used to re-mine topology, metal, and linker distributions; not committed or included in Globus. |
+| `qmof.csv` (download separately) | Public QMOF release table used to re-mine topology, metal, and linker distributions; not committed or included in the Zenodo deposit. |
 | `qmof_bb_dir/` | The building-block library: **506 metal-node SBUs** (`N*.xyz`) and **229 organic edges/linkers** (`E*.xyz`, including augmented `E9xxx` linkers). |
 | `qmof_topo_dir/` | **42 net topologies** (`.cgd`: `pcu`, `hex`, `cds`, `dia`, `fcu`, `sod`, `nbo`, `acs`, …). |
 | `qmof_analysis/` | The QMOF-derived whitelists (`selected_{topologies,metals,linkers}.txt`), frequency counts, and `coverage_report.md`. |
@@ -226,15 +226,15 @@ QMOF source and released large inputs. Because trained checkpoints and predictio
 distributed and training is stochastic, a rerun need not reproduce paper scores or ranks
 numerically.
 
-## Large files via Globus (and the `PhaseN` names)
+## Large files via Zenodo (and the `PhaseN` names)
 
-Globus contains **only** the frozen pretrained PMTransformer/SOAP archives, the PORMAKE structure
+The Zenodo deposit contains **only** the frozen pretrained PMTransformer/SOAP archives, the PORMAKE structure
 files of the generated pool, and DFT calculation directories (25 QMOF-pool + 23 generated
 submissions, including available files for incomplete runs and excluding VASP-licensed `POTCAR`
 files). After downloading, restore each archive to the path below; a `README.md` placeholder marks
 each location.
 
-| Globus path | Restore to | Meaning |
+| Zenodo path | Restore to | Meaning |
 |------|------|---------|
 | `embeddings/qmof_labeled_pmtransformer_embeddings.npz` | `../screening/data/embeddings/embeddings_pretrained.npz` (optionally also `embeddings/`) | PMTransformer embeddings of the **labelled** QMOF set and authoritative paper-split labels |
 | `embeddings/qmof_pmtransformer_embeddings.npz` | `embeddings/pmt_embeddings_qmof_all.npz` | Authoritative aligned QMOF cache: 20,371 rows = 10,810 labeled + 9,561 unlabeled |
@@ -244,7 +244,7 @@ each location.
 | `generated_structures/` | `data/generated_structures/` | One PORMAKE CIF per generated-pool member; exactly the 13,802 paper-pool identifiers |
 | `dft_validation/` (per submitted MOF) | your `DFT_WORK_ROOT` | Available PBED3-PreRelax / PBED3-Relax / PBED3-Single / HSE-single inputs and outputs for 25 + 23 submissions |
 
-The Globus filenames are descriptive; the *Restore to* column gives the path and filename each
+The Zenodo filenames are descriptive; the *Restore to* column gives the path and filename each
 archive must take inside this repository.
 
 The generated SOAP archive is also the authoritative identity record for the paper pool. Materialize
@@ -265,7 +265,7 @@ names `Phase5_embeddings.npz`, `Phase6_embeddings.npz`, and `all_embeddings.npz`
 For the complete QMOF unlabeled pool, select the 9,561 unlabeled IDs from
 `pmt_embeddings_qmof_all.npz`. The historical 9,527-row standalone archive is retained only under
 the umbrella workspace's local non-release `RESULTS/local_only_archive/` folder and is not part of
-Globus.
+Zenodo.
 
 ---
 
